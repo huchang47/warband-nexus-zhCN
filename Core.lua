@@ -114,6 +114,13 @@ local defaults = {
             [4] = false,
             [5] = false,
         },
+        
+        -- Storage tab expanded state
+        storageExpanded = {
+            warband = true,  -- Warband Bank expanded by default
+            personal = false,  -- Personal collapsed by default
+            categories = {},  -- {["warband_TradeGoods"] = true, ["personal_CharName_TradeGoods"] = false}
+        },
     },
     global = {
         -- Warband bank cache (SHARED across all characters)
@@ -298,6 +305,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn show - " .. L["SLASH_SHOW"])
         self:Print("  /wn options - " .. L["SLASH_OPTIONS"])
         self:Print("  /wn scan - " .. L["SLASH_SCAN"])
+        self:Print("  /wn storage - Show Storage Browser tab")
         self:Print("  /wn chars - List tracked characters")
         self:Print("  /wn pve - Show PvE tab (Great Vault, M+, Lockouts)")
         self:Print("  /wn pvedata - Print current character's PvE data")
@@ -314,6 +322,15 @@ function WarbandNexus:SlashCommand(input)
         self:ToggleMainWindow()
     elseif cmd == "chars" or cmd == "characters" then
         self:PrintCharacterList()
+    elseif cmd == "storage" or cmd == "browse" then
+        -- Show Storage tab directly
+        self:ShowMainWindow()
+        if self.UI and self.UI.mainFrame then
+            self.UI.mainFrame.currentTab = "storage"
+            if self.PopulateContent then
+                self:PopulateContent()
+            end
+        end
     elseif cmd == "pve" then
         -- Show PvE tab directly
         self:ShowMainWindow()
@@ -890,6 +907,31 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Collect PvE data (Great Vault, Lockouts, M+)
     local pveData = self:CollectPvEData()
     
+    -- Copy personal bank data to global (for cross-character search and storage browser)
+    local personalBank = nil
+    if self.db.char.personalBank and self.db.char.personalBank.items then
+        personalBank = {}
+        for bagID, bagData in pairs(self.db.char.personalBank.items) do
+            personalBank[bagID] = {}
+            for slotID, item in pairs(bagData) do
+                -- Deep copy all item fields
+                personalBank[bagID][slotID] = {
+                    itemID = item.itemID,
+                    itemLink = item.itemLink,
+                    stackCount = item.stackCount,
+                    quality = item.quality,
+                    iconFileID = item.iconFileID,
+                    name = item.name,
+                    itemLevel = item.itemLevel,
+                    itemType = item.itemType,
+                    itemSubType = item.itemSubType,
+                    classID = item.classID,
+                    subclassID = item.subclassID,
+                }
+            end
+        end
+    end
+    
     -- Store character data
     self.db.global.characters[key] = {
         name = name,
@@ -903,6 +945,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         race = race,
         lastSeen = time(),
         pve = pveData,  -- Store PvE data
+        personalBank = personalBank,  -- Store personal bank for search
     }
     
     -- Notify only for new characters
@@ -1483,6 +1526,120 @@ function WarbandNexus:PrintPvEData()
         self.db.global.characters[key].pve = pveData
         self.db.global.characters[key].lastSeen = time()
         self:Print("|cff00ff00Data saved! Use /wn pve to view in UI|r")
+    end
+end
+
+--[[
+    Perform cross-character item search
+    @param searchTerm string The item name to search for
+]]
+function WarbandNexus:PerformItemSearch(searchTerm)
+    if not searchTerm or searchTerm == "" then
+        self.searchResults = {}
+        if self.RefreshUI then self:RefreshUI() end
+        return
+    end
+    
+    searchTerm = searchTerm:lower()
+    local itemResults = {} -- {[itemID] = {name, link, icon, quality, totalCount, locations}}
+    
+    -- Search Warband Bank (once, since it's shared)
+    local warbandBankData = self.db.global.warbandBankCache or {}
+    for bagID, bagData in pairs(warbandBankData) do
+        for slotID, item in pairs(bagData) do
+            if item.name and item.name:lower():find(searchTerm, 1, true) then
+                local itemID = item.itemID or item.link
+                if not itemResults[itemID] then
+                    itemResults[itemID] = {
+                        name = item.name,
+                        link = item.link,
+                        icon = item.icon,
+                        quality = item.quality,
+                        totalCount = 0,
+                        locations = {}
+                    }
+                end
+                itemResults[itemID].totalCount = itemResults[itemID].totalCount + (item.count or 1)
+                -- Add to locations if not already there
+                local found = false
+                for _, loc in ipairs(itemResults[itemID].locations) do
+                    if loc.source == "Warband Bank" then
+                        loc.count = loc.count + (item.count or 1)
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    table.insert(itemResults[itemID].locations, {
+                        source = "Warband Bank",
+                        count = item.count or 1
+                    })
+                end
+            end
+        end
+    end
+    
+    -- Search each character's personal bank
+    for charKey, charData in pairs(self.db.global.characters or {}) do
+        local charName = charKey:match("^([^-]+)") -- Extract character name from "Name-Realm"
+        
+        -- Search personal bank
+        if charData.personalBank then
+            for bagID, bagData in pairs(charData.personalBank) do
+                for slotID, item in pairs(bagData) do
+                    if item.name and item.name:lower():find(searchTerm, 1, true) then
+                        local itemID = item.itemID or item.link
+                        if not itemResults[itemID] then
+                            itemResults[itemID] = {
+                                name = item.name,
+                                link = item.link,
+                                icon = item.icon,
+                                quality = item.quality,
+                                totalCount = 0,
+                                locations = {}
+                            }
+                        end
+                        itemResults[itemID].totalCount = itemResults[itemID].totalCount + (item.count or 1)
+                        -- Add to locations
+                        local sourceName = charName .. " (Personal Bank)"
+                        local found = false
+                        for _, loc in ipairs(itemResults[itemID].locations) do
+                            if loc.source == sourceName then
+                                loc.count = loc.count + (item.count or 1)
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            table.insert(itemResults[itemID].locations, {
+                                source = sourceName,
+                                count = item.count or 1
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Convert to array and sort by total count
+    local results = {}
+    for itemID, data in pairs(itemResults) do
+        table.insert(results, data)
+    end
+    table.sort(results, function(a, b) return a.totalCount > b.totalCount end)
+    
+    -- Store results
+    self.searchResults = results
+    
+    -- Refresh UI
+    if self.RefreshUI then
+        self:RefreshUI()
+    end
+    
+    -- Debug output
+    if self.db.profile.debug then
+        self:Debug(string.format("Search '%s': Found %d unique items", searchTerm, #results))
     end
 end
 

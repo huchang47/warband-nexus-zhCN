@@ -217,6 +217,11 @@ function WarbandNexus:ScanPersonalBank()
     self.lastScanSuccess = true
     self.lastScanTime = time()
     
+    -- Copy to global database for Storage tab
+    if self.SaveCurrentCharacterData then
+        self:SaveCurrentCharacterData()
+    end
+    
     -- Refresh UI to show "Up-to-Date" status
     if self.RefreshUI then
         self:RefreshUI()

@@ -45,8 +45,14 @@ local QUALITY_COLORS = {
 
 local mainFrame = nil
 local goldTransferFrame = nil
-local currentSearchText = ""
+local currentSearchText = ""  -- Legacy, will be removed
+local itemsSearchText = ""
+local storageSearchText = ""
 local currentTab = "chars" -- Default to Characters tab
+
+-- Search throttle timers
+local itemsSearchThrottle = nil
+local storageSearchThrottle = nil
 
 --============================================================================
 -- Gold Transfer Popup
@@ -555,7 +561,7 @@ function WarbandNexus:CreateMainWindow()
     -- Tab styling function
     local function CreateTabButton(parent, text, key, xOffset)
         local btn = CreateFrame("Button", nil, parent)
-        btn:SetSize(90, 30)
+        btn:SetSize(105, 32)  -- Standardized size
         btn:SetPoint("LEFT", xOffset, 0)
         btn.key = key
         
@@ -585,10 +591,13 @@ function WarbandNexus:CreateMainWindow()
         return btn
     end
     
+    -- Create tabs with equal spacing (105px width + 5px gap = 110px spacing)
+    local tabSpacing = 110
     f.tabButtons["chars"] = CreateTabButton(nav, "Characters", "chars", 10)
-    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 105)
-    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 200)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 295)
+    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
+    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
+    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
+    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 4)
     
     -- Settings button
     local settingsBtn = CreateFrame("Button", nil, nav)
@@ -604,63 +613,6 @@ function WarbandNexus:CreateMainWindow()
     end)
     settingsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
-    -- Search box (custom implementation)
-    local searchFrame = CreateFrame("Frame", nil, nav, "BackdropTemplate")
-    searchFrame:SetSize(150, 24)
-    searchFrame:SetPoint("RIGHT", settingsBtn, "LEFT", -10, 0)
-    searchFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    searchFrame:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    searchFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
-    
-    local searchBox = CreateFrame("EditBox", "WarbandNexusSearchBox", searchFrame)
-    searchBox:SetPoint("TOPLEFT", 8, -4)
-    searchBox:SetPoint("BOTTOMRIGHT", -8, 4)
-    searchBox:SetFontObject("GameFontHighlight")
-    searchBox:SetAutoFocus(false)
-    searchBox:SetMaxLetters(50)
-    
-    -- Placeholder text
-    local placeholder = searchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    placeholder:SetPoint("LEFT", 0, 0)
-    placeholder:SetText("Search...")
-    placeholder:SetTextColor(0.5, 0.5, 0.5)
-    searchBox.placeholder = placeholder
-    
-    searchBox:SetScript("OnTextChanged", function(self)
-        local text = self:GetText()
-        -- Show/hide placeholder
-        if text and text ~= "" then
-            self.placeholder:Hide()
-            currentSearchText = text:lower()
-        else
-            self.placeholder:Show()
-            currentSearchText = ""
-        end
-        WarbandNexus:PopulateContent()
-    end)
-    searchBox:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-        currentSearchText = ""
-        self.placeholder:Show()
-        WarbandNexus:PopulateContent()
-    end)
-    searchBox:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    searchBox:SetScript("OnEditFocusGained", function(self)
-        searchFrame:SetBackdropBorderColor(0.4, 0.6, 0.8, 1)
-    end)
-    searchBox:SetScript("OnEditFocusLost", function(self)
-        searchFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
-    end)
-    
-    f.searchBox = searchBox
-    
     -- ===== CONTENT AREA =====
     local content = CreateFrame("Frame", nil, f, "BackdropTemplate")
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
@@ -674,10 +626,17 @@ function WarbandNexus:CreateMainWindow()
     content:SetBackdropBorderColor(unpack(COLORS.border))
     f.content = content
     
-    -- Scroll frame
+    -- Search box area (static, never refreshed)
+    local searchArea = CreateFrame("Frame", nil, content)
+    searchArea:SetHeight(40) -- Search box + padding
+    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 4, -4)
+    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -28, -4)
+    f.searchArea = searchArea
+    
+    -- Scroll frame (below search area)
     local scroll = CreateFrame("ScrollFrame", "WarbandNexusScroll", content, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 4, -4)
-    scroll:SetPoint("BOTTOMRIGHT", -24, 4)
+    scroll:SetPoint("TOPLEFT", searchArea, "BOTTOMLEFT", 0, -4)
+    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -24, 4)
     f.scroll = scroll
     
     local scrollChild = CreateFrame("Frame", nil, scroll)
@@ -685,6 +644,178 @@ function WarbandNexus:CreateMainWindow()
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
+    
+    -- ===== PERSISTENT SEARCH BOXES (Items & Storage) =====
+    -- These are in searchArea, completely separate from scrollChild
+    -- They are NEVER refreshed, only shown/hidden
+    
+    -- Items search box container
+    local itemsSearchContainer = CreateFrame("Frame", nil, searchArea)
+    itemsSearchContainer:SetPoint("TOPLEFT", searchArea, "TOPLEFT", 6, -4)
+    itemsSearchContainer:SetPoint("TOPRIGHT", searchArea, "TOPRIGHT", -6, -4)
+    itemsSearchContainer:SetHeight(32)
+    itemsSearchContainer:Hide() -- Hidden by default
+    f.itemsSearchContainer = itemsSearchContainer
+    
+    local itemsSearchFrame = CreateFrame("Frame", nil, itemsSearchContainer, "BackdropTemplate")
+    itemsSearchFrame:SetAllPoints()
+    itemsSearchFrame:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    itemsSearchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
+    itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    
+    local itemsSearchIcon = itemsSearchFrame:CreateTexture(nil, "ARTWORK")
+    itemsSearchIcon:SetSize(16, 16)
+    itemsSearchIcon:SetPoint("LEFT", 10, 0)
+    itemsSearchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    itemsSearchIcon:SetAlpha(0.5)
+    
+    local itemsSearchBox = CreateFrame("EditBox", "WarbandNexusItemsSearchPersistent", itemsSearchFrame)
+    itemsSearchBox:SetPoint("LEFT", itemsSearchIcon, "RIGHT", 8, 0)
+    itemsSearchBox:SetPoint("RIGHT", -10, 0)
+    itemsSearchBox:SetHeight(20)
+    itemsSearchBox:SetFontObject("GameFontNormal")
+    itemsSearchBox:SetAutoFocus(false)
+    itemsSearchBox:SetMaxLetters(50)
+    
+    local itemsPlaceholder = itemsSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    itemsPlaceholder:SetPoint("LEFT", 0, 0)
+    itemsPlaceholder:SetText("Search items...")
+    itemsPlaceholder:SetTextColor(0.5, 0.5, 0.5)
+    
+    itemsSearchBox:SetScript("OnTextChanged", function(self, userInput)
+        if not userInput then return end
+        
+        local text = self:GetText()
+        local newSearchText = ""
+        if text and text ~= "" then
+            itemsPlaceholder:Hide()
+            newSearchText = text:lower()
+        else
+            itemsPlaceholder:Show()
+            newSearchText = ""
+        end
+        
+        if newSearchText ~= itemsSearchText then
+            itemsSearchText = newSearchText
+            
+            if itemsSearchThrottle then
+                itemsSearchThrottle:Cancel()
+            end
+            
+            itemsSearchThrottle = C_Timer.NewTimer(0.3, function()
+                WarbandNexus:PopulateContent()
+                itemsSearchThrottle = nil
+            end)
+        end
+    end)
+    
+    itemsSearchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    
+    itemsSearchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    itemsSearchBox:SetScript("OnEditFocusGained", function(self)
+        itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    end)
+    
+    itemsSearchBox:SetScript("OnEditFocusLost", function(self)
+        itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    end)
+    
+    f.itemsSearchBox = itemsSearchBox
+    f.itemsPlaceholder = itemsPlaceholder
+    
+    -- Storage search box container
+    local storageSearchContainer = CreateFrame("Frame", nil, searchArea)
+    storageSearchContainer:SetPoint("TOPLEFT", searchArea, "TOPLEFT", 6, -4)
+    storageSearchContainer:SetPoint("TOPRIGHT", searchArea, "TOPRIGHT", -6, -4)
+    storageSearchContainer:SetHeight(32)
+    storageSearchContainer:Hide() -- Hidden by default
+    f.storageSearchContainer = storageSearchContainer
+    
+    local storageSearchFrame = CreateFrame("Frame", nil, storageSearchContainer, "BackdropTemplate")
+    storageSearchFrame:SetAllPoints()
+    storageSearchFrame:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    storageSearchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
+    storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    
+    local storageSearchIcon = storageSearchFrame:CreateTexture(nil, "ARTWORK")
+    storageSearchIcon:SetSize(16, 16)
+    storageSearchIcon:SetPoint("LEFT", 10, 0)
+    storageSearchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    storageSearchIcon:SetAlpha(0.5)
+    
+    local storageSearchBox = CreateFrame("EditBox", "WarbandNexusStorageSearchPersistent", storageSearchFrame)
+    storageSearchBox:SetPoint("LEFT", storageSearchIcon, "RIGHT", 8, 0)
+    storageSearchBox:SetPoint("RIGHT", -10, 0)
+    storageSearchBox:SetHeight(20)
+    storageSearchBox:SetFontObject("GameFontNormal")
+    storageSearchBox:SetAutoFocus(false)
+    storageSearchBox:SetMaxLetters(50)
+    
+    local storagePlaceholder = storageSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    storagePlaceholder:SetPoint("LEFT", 0, 0)
+    storagePlaceholder:SetText("Search storage...")
+    storagePlaceholder:SetTextColor(0.5, 0.5, 0.5)
+    
+    storageSearchBox:SetScript("OnTextChanged", function(self, userInput)
+        if not userInput then return end
+        
+        local text = self:GetText()
+        local newSearchText = ""
+        if text and text ~= "" then
+            storagePlaceholder:Hide()
+            newSearchText = text:lower()
+        else
+            storagePlaceholder:Show()
+            newSearchText = ""
+        end
+        
+        if newSearchText ~= storageSearchText then
+            storageSearchText = newSearchText
+            
+            if storageSearchThrottle then
+                storageSearchThrottle:Cancel()
+            end
+            
+            storageSearchThrottle = C_Timer.NewTimer(0.3, function()
+                WarbandNexus:PopulateContent()
+                storageSearchThrottle = nil
+            end)
+        end
+    end)
+    
+    storageSearchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    
+    storageSearchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    storageSearchBox:SetScript("OnEditFocusGained", function(self)
+        storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    end)
+    
+    storageSearchBox:SetScript("OnEditFocusLost", function(self)
+        storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    end)
+    
+    f.storageSearchBox = storageSearchBox
+    f.storagePlaceholder = storagePlaceholder
     
     -- ===== FOOTER =====
     local footer = CreateFrame("Frame", nil, f)
@@ -817,12 +948,43 @@ function WarbandNexus:PopulateContent()
         end
     end
     
-    -- Draw based on current tab
+    -- Show/hide search boxes based on current tab (NEVER reposition them!)
+    if mainFrame.itemsSearchContainer then
+        if mainFrame.currentTab == "items" then
+            mainFrame.itemsSearchContainer:Show()
+            -- Update placeholder
+            if itemsSearchText and itemsSearchText ~= "" then
+                mainFrame.itemsPlaceholder:Hide()
+            else
+                mainFrame.itemsPlaceholder:Show()
+            end
+        else
+            mainFrame.itemsSearchContainer:Hide()
+        end
+    end
+    
+    if mainFrame.storageSearchContainer then
+        if mainFrame.currentTab == "storage" then
+            mainFrame.storageSearchContainer:Show()
+            -- Update placeholder
+            if storageSearchText and storageSearchText ~= "" then
+                mainFrame.storagePlaceholder:Hide()
+            else
+                mainFrame.storagePlaceholder:Show()
+            end
+        else
+            mainFrame.storageSearchContainer:Hide()
+        end
+    end
+    
+    -- Draw based on current tab (only affects scrollChild, not search boxes!)
     local height
     if mainFrame.currentTab == "chars" then
         height = self:DrawCharacterList(scrollChild)
     elseif mainFrame.currentTab == "items" then
         height = self:DrawItemList(scrollChild)
+    elseif mainFrame.currentTab == "storage" then
+        height = self:DrawStorageTab(scrollChild)
     elseif mainFrame.currentTab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
     elseif mainFrame.currentTab == "stats" then
@@ -938,8 +1100,6 @@ local expandedGroups = {}
 function WarbandNexus:DrawItemList(parent)
     local yOffset = 10
     local width = parent:GetWidth() - 16
-    
-    self:Debug("DrawItemList: START. subTab=" .. tostring(currentItemsSubTab) .. ", width=" .. width)
     
     -- CRITICAL: Sync WoW bank tab whenever we draw the item list
     -- This ensures right-click deposits go to the correct bank
@@ -1077,6 +1237,9 @@ function WarbandNexus:DrawItemList(parent)
     
     yOffset = yOffset + 40
     
+    -- Note: Search box is in searchArea (outside scrollChild), no need to position it here
+    -- It's already positioned and never moves!
+    
     -- Get items based on selected sub-tab
     local items = {}
     if currentItemsSubTab == "warband" then
@@ -1085,14 +1248,13 @@ function WarbandNexus:DrawItemList(parent)
         items = self:GetPersonalBankItems() or {}
     end
     
-    -- Apply search filter
-    if currentSearchText and currentSearchText ~= "" then
+    -- Apply search filter (Items tab specific)
+    if itemsSearchText and itemsSearchText ~= "" then
         local filtered = {}
-        local searchLower = currentSearchText:lower()
         for _, item in ipairs(items) do
             local itemName = (item.name or ""):lower()
             local itemLink = (item.itemLink or ""):lower()
-            if itemName:find(searchLower, 1, true) or itemLink:find(searchLower, 1, true) then
+            if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
                 table.insert(filtered, item)
             end
         end
@@ -1135,7 +1297,7 @@ function WarbandNexus:DrawItemList(parent)
     yOffset = yOffset + 28
     
     if #items == 0 then
-        return self:DrawEmptyState(parent, yOffset, currentSearchText ~= "")
+        return self:DrawEmptyState(parent, yOffset, itemsSearchText ~= "")
     end
     
     -- Group items by type (itemType field from scan)
@@ -1482,7 +1644,7 @@ end
 --============================================================================
 -- DRAW EMPTY STATE
 --============================================================================
-function WarbandNexus:DrawEmptyState(parent, startY, isSearch)
+function WarbandNexus:DrawEmptyState(parent, startY, isSearch, searchText)
     local yOffset = startY + 50
     
     local icon = parent:CreateTexture(nil, "ARTWORK")
@@ -1501,9 +1663,532 @@ function WarbandNexus:DrawEmptyState(parent, startY, isSearch)
     local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     desc:SetPoint("TOP", 0, -yOffset)
     desc:SetTextColor(0.5, 0.5, 0.5)
-    desc:SetText(isSearch and ("No items match '" .. currentSearchText .. "'") or "Open your Warband Bank to scan items")
+    local displayText = searchText or itemsSearchText or ""
+    desc:SetText(isSearch and ("No items match '" .. displayText .. "'") or "Open your Warband Bank to scan items")
     
     return yOffset + 50
+end
+
+--============================================================================
+-- DRAW STORAGE TAB (Hierarchical Storage Browser)
+--============================================================================
+
+-- Helper: Create collapsible header with +/- button and optional icon
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture)
+    local header = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    header:SetSize(parent:GetWidth() - 20, 32)
+    header:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    header:SetBackdropColor(0.1, 0.1, 0.12, 1)
+    header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    
+    -- Expand/Collapse button
+    local expandBtn = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    expandBtn:SetPoint("LEFT", 10, 0)
+    expandBtn:SetText(isExpanded and "[-]" or "[+]")
+    expandBtn:SetTextColor(0.4, 0.2, 0.58)
+    
+    local textAnchor = expandBtn
+    local textOffset = 10
+    
+    -- Optional icon
+    if iconTexture then
+        local icon = header:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(20, 20)
+        icon:SetPoint("LEFT", expandBtn, "RIGHT", 10, 0)
+        icon:SetTexture(iconTexture)
+        textAnchor = icon
+        textOffset = 6
+    end
+    
+    -- Header text
+    local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
+    headerText:SetText(text)
+    headerText:SetTextColor(1, 1, 1)
+    
+    -- Click handler
+    header:SetScript("OnClick", function()
+        onToggle(key)
+    end)
+    
+    -- Hover effect
+    header:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(0.15, 0.15, 0.18, 1)
+    end)
+    
+    header:SetScript("OnLeave", function(self)
+        self:SetBackdropColor(0.1, 0.1, 0.12, 1)
+    end)
+    
+    return header, expandBtn
+end
+
+-- Helper: Get item type name
+local function GetItemTypeName(classID)
+    local typeName = GetItemClassInfo(classID)
+    return typeName or "Other"
+end
+
+-- Helper: Get item class ID
+local function GetItemClassID(itemID)
+    if not itemID then return 15 end -- Miscellaneous
+    local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
+    return classID or 15
+end
+
+-- Helper: Get icon for item type
+local function GetTypeIcon(classID)
+    local icons = {
+        [0] = "Interface\\Icons\\INV_Potion_51",          -- Consumable (Potion)
+        [1] = "Interface\\Icons\\INV_Box_02",             -- Container
+        [2] = "Interface\\Icons\\INV_Sword_27",           -- Weapon
+        [3] = "Interface\\Icons\\INV_Misc_Gem_01",        -- Gem
+        [4] = "Interface\\Icons\\INV_Chest_Cloth_07",     -- Armor
+        [5] = "Interface\\Icons\\INV_Enchant_DustArcane", -- Reagent
+        [6] = "Interface\\Icons\\INV_Ammo_Arrow_02",      -- Projectile
+        [7] = "Interface\\Icons\\Trade_Engineering",      -- Trade Goods
+        [8] = "Interface\\Icons\\INV_Misc_EnchantedScroll", -- Item Enhancement
+        [9] = "Interface\\Icons\\INV_Scroll_04",          -- Recipe
+        [12] = "Interface\\Icons\\INV_Misc_Key_03",       -- Quest (Key icon)
+        [15] = "Interface\\Icons\\INV_Misc_Gear_01",      -- Miscellaneous
+        [16] = "Interface\\Icons\\INV_Inscription_Tradeskill01", -- Glyph
+        [17] = "Interface\\Icons\\PetJournalPortrait",    -- Battlepet
+        [18] = "Interface\\Icons\\WoW_Token01",           -- WoW Token
+    }
+    return icons[classID] or "Interface\\Icons\\INV_Misc_Gear_01"
+end
+
+-- Main storage drawing function
+function WarbandNexus:DrawStorageTab(parent)
+    local yOffset = 10
+    local width = parent:GetWidth() - 20
+    local indent = 20
+    
+    -- ===== HEADER CARD =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_36")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetText("|cffa335eeStorage Browser|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Browse all items organized by type")
+    
+    yOffset = yOffset + 80
+    
+    -- Note: Search box is in searchArea (outside scrollChild), no need to position it here
+    -- It's already positioned and never moves!
+    
+    -- Get expanded state
+    local expanded = self.db.profile.storageExpanded or {}
+    if not expanded.categories then expanded.categories = {} end
+    
+    -- Toggle function
+    local function ToggleExpand(key)
+        if key == "warband" or key == "personal" then
+            expanded[key] = not expanded[key]
+        else
+            expanded.categories[key] = not expanded.categories[key]
+        end
+        self:RefreshUI()
+    end
+    
+    -- Search filtering helper
+    local function ItemMatchesSearch(item)
+        if not storageSearchText or storageSearchText == "" then
+            return true
+        end
+        local itemName = (item.name or ""):lower()
+        local itemLink = (item.itemLink or ""):lower()
+        return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
+    end
+    
+    -- PRE-SCAN: If search is active, find which categories have matches
+    local categoriesWithMatches = {}
+    local hasAnyMatches = false
+    
+    if storageSearchText and storageSearchText ~= "" then
+        -- Scan Warband Bank
+        local warbandBankData = self.db.global.warbandBank and self.db.global.warbandBank.items or {}
+        for bagID, bagData in pairs(warbandBankData) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID and ItemMatchesSearch(item) then
+                    local classID = item.classID or GetItemClassID(item.itemID)
+                    local typeName = GetItemTypeName(classID)
+                    local categoryKey = "warband_" .. typeName
+                    categoriesWithMatches[categoryKey] = true
+                    categoriesWithMatches["warband"] = true
+                    hasAnyMatches = true
+                end
+            end
+        end
+        
+        -- Scan Personal Banks
+        for charKey, charData in pairs(self.db.global.characters or {}) do
+            if charData.personalBank then
+                for bagID, bagData in pairs(charData.personalBank) do
+                    for slotID, item in pairs(bagData) do
+                        if item.itemID and ItemMatchesSearch(item) then
+                            local classID = item.classID or GetItemClassID(item.itemID)
+                            local typeName = GetItemTypeName(classID)
+                            local charCategoryKey = "personal_" .. charKey
+                            local typeKey = charCategoryKey .. "_" .. typeName
+                            categoriesWithMatches[typeKey] = true
+                            categoriesWithMatches[charCategoryKey] = true
+                            categoriesWithMatches["personal"] = true
+                            hasAnyMatches = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- If search is active but no matches, show empty state
+    if storageSearchText and storageSearchText ~= "" and not hasAnyMatches then
+        return self:DrawEmptyState(parent, yOffset, true, storageSearchText)
+    end
+    
+    -- ===== WARBAND BANK SECTION =====
+    -- Auto-expand if search has matches in this section
+    local warbandExpanded = expanded.warband
+    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
+        warbandExpanded = true
+    end
+    
+    -- Skip section entirely if search active and no matches
+    if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"] then
+        -- Skip this section
+    else
+        local warbandHeader, warbandBtn = CreateCollapsibleHeader(
+            parent, 
+            "Warband Bank", 
+            "warband", 
+            warbandExpanded, 
+            ToggleExpand,
+            "Interface\\Icons\\INV_Misc_Bag_36"
+        )
+        warbandHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        yOffset = yOffset + 38
+    end
+    
+    if warbandExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"]) then
+        -- Group warband items by type
+        local warbandItems = {}
+        local warbandBankData = self.db.global.warbandBank and self.db.global.warbandBank.items or {}
+        
+        for bagID, bagData in pairs(warbandBankData) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID then
+                    -- Use stored classID or get it from API
+                    local classID = item.classID or GetItemClassID(item.itemID)
+                    local typeName = GetItemTypeName(classID)
+                    
+                    if not warbandItems[typeName] then
+                        warbandItems[typeName] = {}
+                    end
+                    -- Store classID in item for icon lookup
+                    if not item.classID then
+                        item.classID = classID
+                    end
+                    table.insert(warbandItems[typeName], item)
+                end
+            end
+        end
+        
+        -- Sort types alphabetically
+        local sortedTypes = {}
+        for typeName in pairs(warbandItems) do
+            table.insert(sortedTypes, typeName)
+        end
+        table.sort(sortedTypes)
+        
+        -- Draw each type category
+        for _, typeName in ipairs(sortedTypes) do
+            local categoryKey = "warband_" .. typeName
+            
+            -- Skip category if search active and no matches
+            if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
+                -- Skip this category
+            else
+                -- Auto-expand if search has matches in this category
+                local isTypeExpanded = expanded.categories[categoryKey]
+                if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
+                    isTypeExpanded = true
+                end
+                
+                -- Count items that match search (for display)
+                local matchCount = 0
+                for _, item in ipairs(warbandItems[typeName]) do
+                    if ItemMatchesSearch(item) then
+                        matchCount = matchCount + 1
+                    end
+                end
+                
+                -- Get icon from first item in category
+                local typeIcon = nil
+                if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
+                    typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
+                end
+                
+                -- Type header (indented) - show match count if searching
+                local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
+                local typeHeader, typeBtn = CreateCollapsibleHeader(
+                    parent,
+                    typeName .. " (" .. displayCount .. ")",
+                    categoryKey,
+                    isTypeExpanded,
+                    ToggleExpand,
+                    typeIcon
+                )
+                typeHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                typeHeader:SetWidth(width - indent)
+                yOffset = yOffset + 38
+                
+                if isTypeExpanded then
+                    -- Display items in this category (with search filter)
+                    for _, item in ipairs(warbandItems[typeName]) do
+                        -- Apply search filter
+                        local shouldShow = ItemMatchesSearch(item)
+                        
+                        if shouldShow then
+                        local itemRow = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+                        itemRow:SetSize(width - indent * 2, 36)
+                        itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                        itemRow:SetBackdrop({
+                            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                        })
+                        itemRow:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
+                        
+                        -- Icon
+                        local icon = itemRow:CreateTexture(nil, "ARTWORK")
+                        icon:SetSize(28, 28)
+                        icon:SetPoint("LEFT", 5, 0)
+                        icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        
+                        -- Name
+                        local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+                        nameText:SetText(item.itemLink or item.name or "Unknown")
+                        
+                        -- Count
+                        local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        countText:SetPoint("RIGHT", -10, 0)
+                        countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
+                        
+                        yOffset = yOffset + 38
+                    end
+                end
+            end
+            end
+        end
+        
+        if #sortedTypes == 0 then
+            local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            emptyText:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetText("  No items in Warband Bank")
+            yOffset = yOffset + 25
+        end
+    end
+    
+    yOffset = yOffset + 10
+    
+    -- ===== PERSONAL BANKS SECTION =====
+    -- Auto-expand if search has matches in this section
+    local personalExpanded = expanded.personal
+    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
+        personalExpanded = true
+    end
+    
+    -- Skip section entirely if search active and no matches
+    if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"] then
+        -- Skip this section
+    else
+        local personalHeader, personalBtn = CreateCollapsibleHeader(
+            parent,
+            "Personal Banks",
+            "personal",
+            personalExpanded,
+            ToggleExpand,
+            "Interface\\Icons\\Achievement_Character_Human_Male"
+        )
+        personalHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        yOffset = yOffset + 38
+    end
+    
+    if personalExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"]) then
+        -- Iterate through each character
+        for charKey, charData in pairs(self.db.global.characters or {}) do
+            if charData.personalBank then
+                local charName = charKey:match("^([^-]+)")
+                local charCategoryKey = "personal_" .. charKey
+                
+                -- Skip character if search active and no matches
+                if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[charCategoryKey] then
+                    -- Skip this character
+                else
+                    -- Auto-expand if search has matches for this character
+                    local isCharExpanded = expanded.categories[charCategoryKey]
+                    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[charCategoryKey] then
+                        isCharExpanded = true
+                    end
+                    
+                    -- Get character class icon
+                    local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"  -- Default
+                    if charData.classFile then
+                        charIcon = "Interface\\Icons\\ClassIcon_" .. charData.classFile
+                    end
+                    
+                    -- Character header (indented)
+                    local charHeader, charBtn = CreateCollapsibleHeader(
+                        parent,
+                        (charName or charKey),
+                        charCategoryKey,
+                        isCharExpanded,
+                        ToggleExpand,
+                        charIcon
+                    )
+                    charHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                    charHeader:SetWidth(width - indent)
+                    yOffset = yOffset + 38
+                    
+                    if isCharExpanded then
+                    -- Group character's items by type
+                    local charItems = {}
+                    for bagID, bagData in pairs(charData.personalBank) do
+                        for slotID, item in pairs(bagData) do
+                            if item.itemID then
+                                -- Use stored classID or get it from API
+                                local classID = item.classID or GetItemClassID(item.itemID)
+                                local typeName = GetItemTypeName(classID)
+                                
+                                if not charItems[typeName] then
+                                    charItems[typeName] = {}
+                                end
+                                -- Store classID in item for icon lookup
+                                if not item.classID then
+                                    item.classID = classID
+                                end
+                                table.insert(charItems[typeName], item)
+                            end
+                        end
+                    end
+                    
+                    -- Sort types
+                    local charSortedTypes = {}
+                    for typeName in pairs(charItems) do
+                        table.insert(charSortedTypes, typeName)
+                    end
+                    table.sort(charSortedTypes)
+                    
+                    -- Draw each type category for this character
+                    for _, typeName in ipairs(charSortedTypes) do
+                        local typeKey = "personal_" .. charKey .. "_" .. typeName
+                        
+                        -- Skip category if search active and no matches
+                        if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[typeKey] then
+                            -- Skip this category
+                        else
+                            -- Auto-expand if search has matches in this category
+                            local isTypeExpanded = expanded.categories[typeKey]
+                            if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[typeKey] then
+                                isTypeExpanded = true
+                            end
+                            
+                            -- Count items that match search (for display)
+                            local matchCount = 0
+                            for _, item in ipairs(charItems[typeName]) do
+                                if ItemMatchesSearch(item) then
+                                    matchCount = matchCount + 1
+                                end
+                            end
+                            
+                            -- Get icon from first item in category
+                            local typeIcon2 = nil
+                            if charItems[typeName][1] and charItems[typeName][1].classID then
+                                typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
+                            end
+                            
+                            -- Type header (double indented) - show match count if searching
+                            local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #charItems[typeName]
+                            local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
+                                parent,
+                                typeName .. " (" .. displayCount .. ")",
+                                typeKey,
+                                isTypeExpanded,
+                                ToggleExpand,
+                                typeIcon2
+                            )
+                            typeHeader2:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                            typeHeader2:SetWidth(width - indent * 2)
+                            yOffset = yOffset + 38
+                            
+                            if isTypeExpanded then
+                                -- Display items (with search filter)
+                                for _, item in ipairs(charItems[typeName]) do
+                                    -- Apply search filter
+                                    local shouldShow = ItemMatchesSearch(item)
+                                    
+                                    if shouldShow then
+                                    local itemRow = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+                                    itemRow:SetSize(width - indent * 3, 36)
+                                    itemRow:SetPoint("TOPLEFT", 10 + indent * 3, -yOffset)
+                                    itemRow:SetBackdrop({
+                                        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                                    })
+                                    itemRow:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
+                                    
+                                    -- Icon
+                                    local icon = itemRow:CreateTexture(nil, "ARTWORK")
+                                    icon:SetSize(28, 28)
+                                    icon:SetPoint("LEFT", 5, 0)
+                                    icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
+                                    
+                                    -- Name
+                                    local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                    nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+                                    nameText:SetText(item.itemLink or item.name or "Unknown")
+                                    
+                                    -- Count
+                                    local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                    countText:SetPoint("RIGHT", -10, 0)
+                                    countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
+                                    
+                                    yOffset = yOffset + 38
+                                end
+                            end
+                        end
+                        end
+                    end
+                    
+                    if #charSortedTypes == 0 then
+                        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        emptyText:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                        emptyText:SetTextColor(0.5, 0.5, 0.5)
+                        emptyText:SetText("    No items in personal bank")
+                        yOffset = yOffset + 25
+                    end
+                    end
+                end
+            end
+        end
+    end
+    
+    return yOffset + 20
 end
 
 --============================================================================
@@ -2630,15 +3315,12 @@ end
 --============================================================================
 function WarbandNexus:SyncBankTab()
     if not self.bankIsOpen then 
-        self:Debug("SYNC: Bank not open, skipping")
+        -- Silently skip if bank not open (don't spam logs)
         return 
     end
-    
-    self:Debug("SYNC: Syncing WoW BankFrame to match: " .. tostring(currentItemsSubTab))
 
     local status, err = pcall(function()
         if not BankFrame then 
-            self:Debug("SYNC: BankFrame not found")
             return 
         end
         
@@ -2650,22 +3332,18 @@ function WarbandNexus:SyncBankTab()
         local targetTabID
         if currentItemsSubTab == "warband" then
             targetTabID = BankFrame.accountBankTabID or 2
-            self:Debug("SYNC: Switching to WARBAND (tabID=" .. targetTabID .. ")")
         else
             targetTabID = BankFrame.characterBankTabID or 1
-            self:Debug("SYNC: Switching to PERSONAL (tabID=" .. targetTabID .. ")")
         end
         
         -- Primary method: Use SetTab function
         if BankFrame.SetTab then
-            self:Debug("SYNC: Using BankFrame:SetTab(" .. targetTabID .. ")")
             BankFrame:SetTab(targetTabID)
             return
         end
         
         -- Fallback: Try SelectDefaultTab
         if BankFrame.SelectDefaultTab then
-            self:Debug("SYNC: Using BankFrame:SelectDefaultTab(" .. targetTabID .. ")")
             BankFrame:SelectDefaultTab(targetTabID)
             return
         end
@@ -2674,18 +3352,13 @@ function WarbandNexus:SyncBankTab()
         if BankFrame.GetTabButton then
             local tabButton = BankFrame:GetTabButton(targetTabID)
             if tabButton and tabButton.Click then
-                self:Debug("SYNC: Clicking tab button from GetTabButton")
                 tabButton:Click()
                 return
             end
         end
-        
-        self:Debug("SYNC: No suitable method found to switch tabs!")
     end)
-
-    if not status then
-        self:Debug("SYNC ERROR: " .. tostring(err))
-    end
+    
+    -- Silently handle any errors (don't spam logs)
 end
 
 -- Debug function to dump BankFrame structure
