@@ -1145,3 +1145,4 @@ function WarbandNexus:InitializeConfig()
     self:Debug("InitializeConfig called (stub)")
 end
 
+

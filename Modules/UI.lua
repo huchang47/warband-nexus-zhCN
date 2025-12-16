@@ -378,16 +378,14 @@ local function CreateCard(parent, height)
 end
 
 local function FormatGold(copper)
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    
-    if gold >= 1000000 then
-        return string.format("%.1fM", gold / 1000000)
-    elseif gold >= 1000 then
-        return string.format("%.1fK", gold / 1000)
-    else
-        return tostring(gold)
+    local gold = math.floor((copper or 0) / 10000)
+    local goldStr = tostring(gold)
+    local k
+    while true do
+        goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
+        if k == 0 then break end
     end
+    return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
 end
 
 --============================================================================
@@ -1512,11 +1510,11 @@ function WarbandNexus:DrawStatistics(parent)
     
     local gc1Value = goldCard1:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     gc1Value:SetPoint("BOTTOMLEFT", gc1Icon, "BOTTOMRIGHT", 12, 0)
-    gc1Value:SetText("|cffffd700" .. FormatGold(warbandGold) .. "g|r")
+    gc1Value:SetText("|cffffd700" .. FormatGold(warbandGold) .. "|r")
     
     local gc1Full = goldCard1:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gc1Full:SetPoint("BOTTOMRIGHT", -10, 10)
-    gc1Full:SetText(GetCoinTextureString(warbandGold))
+    gc1Full:SetText("")
     gc1Full:SetTextColor(0.5, 0.5, 0.5)
     
     -- Your Gold Card
@@ -1536,11 +1534,11 @@ function WarbandNexus:DrawStatistics(parent)
     
     local gc2Value = goldCard2:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     gc2Value:SetPoint("BOTTOMLEFT", gc2Icon, "BOTTOMRIGHT", 12, 0)
-    gc2Value:SetText("|cffffff00" .. FormatGold(playerGold) .. "g|r")
+    gc2Value:SetText("|cffffff00" .. FormatGold(playerGold) .. "|r")
     
     local gc2Full = goldCard2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gc2Full:SetPoint("BOTTOMRIGHT", -10, 10)
-    gc2Full:SetText(GetCoinTextureString(playerGold))
+    gc2Full:SetText("")
     gc2Full:SetTextColor(0.5, 0.5, 0.5)
     
     yOffset = yOffset + 100
@@ -1694,7 +1692,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Status info
     local statusInfo = transferCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     statusInfo:SetPoint("TOPRIGHT", -15, -72)
-    statusInfo:SetText("Available: |cff00ff00" .. FormatGold(depositable) .. "g|r")
+    statusInfo:SetText("Available: |cff00ff00" .. FormatGold(depositable) .. "|r")
     statusInfo:SetTextColor(0.7, 0.7, 0.7)
     
     yOffset = yOffset + 120
@@ -1832,7 +1830,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local goldLabel = goldCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     goldLabel:SetPoint("LEFT", goldIcon, "RIGHT", 10, 0)
-    goldLabel:SetText("Total Gold: |cffffd700" .. GetCoinTextureString(totalGold) .. "|r")
+    goldLabel:SetText("Total Gold: |cffffd700" .. FormatGold(totalGold) .. "|r")
     
     yOffset = yOffset + 60
     
@@ -1856,7 +1854,7 @@ function WarbandNexus:DrawCharacterList(parent)
     colLevel:SetTextColor(0.6, 0.6, 0.6)
     
     local colGold = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    colGold:SetPoint("LEFT", 280, 0)
+    colGold:SetPoint("RIGHT", -120, 0)
     colGold:SetText("GOLD")
     colGold:SetTextColor(0.6, 0.6, 0.6)
     
@@ -1935,8 +1933,9 @@ function WarbandNexus:DrawCharacterList(parent)
         
         -- Gold
         local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        goldText:SetPoint("LEFT", 280, 0)
-        goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "g|r")
+        goldText:SetPoint("RIGHT", -120, 0)
+        goldText:SetJustifyH("RIGHT")
+        goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
         
         -- Last seen
         local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1966,7 +1965,7 @@ function WarbandNexus:DrawCharacterList(parent)
             GameTooltip:AddLine(" ")
             GameTooltip:AddDoubleLine("Class:", char.class or "Unknown", 1, 1, 1, classColor.r, classColor.g, classColor.b)
             GameTooltip:AddDoubleLine("Level:", tostring(char.level or 1), 1, 1, 1, 1, 1, 1)
-            GameTooltip:AddDoubleLine("Gold:", GetCoinTextureString(char.gold or 0), 1, 1, 1, 1, 0.82, 0)
+            GameTooltip:AddDoubleLine("Gold:", FormatGold(char.gold or 0), 1, 1, 1, 1, 0.82, 0)
             if char.faction then
                 GameTooltip:AddDoubleLine("Faction:", char.faction, 1, 1, 1, 0.7, 0.7, 0.7)
             end
