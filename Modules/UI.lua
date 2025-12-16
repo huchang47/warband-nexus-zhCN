@@ -7,6 +7,11 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local L = ns.L
 
+-- Performance: Local function references
+local format = string.format
+local floor = math.floor
+local date = date
+
 -- Constants
 local DEFAULT_WIDTH = 680
 local DEFAULT_HEIGHT = 500
@@ -53,6 +58,123 @@ local currentTab = "chars" -- Default to Characters tab
 -- Search throttle timers
 local itemsSearchThrottle = nil
 local storageSearchThrottle = nil
+
+--============================================================================
+-- FRAME POOLING SYSTEM (Performance Optimization)
+--============================================================================
+-- Reuse frames instead of creating new ones on every refresh
+-- This dramatically reduces memory churn and GC pressure
+
+local ItemRowPool = {}
+local CharacterCardPool = {}
+local StorageRowPool = {}
+
+-- Get an item row from pool or create new
+local function AcquireItemRow(parent, width, rowHeight)
+    local row = table.remove(ItemRowPool)
+    
+    if not row then
+        -- Create new button with all children
+        row = CreateFrame("Button", nil, parent)
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        
+        -- Background texture
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        
+        -- Quantity text (left)
+        row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.qtyText:SetPoint("LEFT", 15, 0)
+        row.qtyText:SetWidth(45)
+        row.qtyText:SetJustifyH("RIGHT")
+        
+        -- Icon
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(22, 22)
+        row.icon:SetPoint("LEFT", 70, 0)
+        
+        -- Name text
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText:SetPoint("LEFT", 98, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
+        
+        -- Location text
+        row.locationText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.locationText:SetPoint("RIGHT", -10, 0)
+        row.locationText:SetWidth(60)
+        row.locationText:SetJustifyH("RIGHT")
+        
+        row.isPooled = true
+    end
+    
+    row:SetParent(parent)
+    row:SetSize(width, rowHeight)
+    row:Show()
+    return row
+end
+
+-- Return item row to pool
+local function ReleaseItemRow(row)
+    if not row or not row.isPooled then return end
+    
+    row:Hide()
+    row:ClearAllPoints()
+    row:SetScript("OnEnter", nil)
+    row:SetScript("OnLeave", nil)
+    
+    table.insert(ItemRowPool, row)
+end
+
+-- Get storage row from pool
+local function AcquireStorageRow(parent, width)
+    local row = table.remove(StorageRowPool)
+    
+    if not row then
+        row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        row:SetBackdrop({bgFile = "Interface\\BUTTONS\\WHITE8X8"})
+        
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(28, 28)
+        row.icon:SetPoint("LEFT", 5, 0)
+        
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.nameText:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+        
+        row.countText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.countText:SetPoint("RIGHT", -10, 0)
+        
+        row.isPooled = true
+    end
+    
+    row:SetParent(parent)
+    row:SetSize(width, 36)
+    row:Show()
+    return row
+end
+
+-- Return storage row to pool
+local function ReleaseStorageRow(row)
+    if not row or not row.isPooled then return end
+    
+    row:Hide()
+    row:ClearAllPoints()
+    table.insert(StorageRowPool, row)
+end
+
+-- Release all pooled children of a frame
+local function ReleaseAllPooledChildren(parent)
+    for _, child in pairs({parent:GetChildren()}) do
+        if child.isPooled then
+            if child.nameText and child.locationText then
+                ReleaseItemRow(child)
+            elseif child.countText then
+                ReleaseStorageRow(child)
+            end
+        end
+    end
+end
 
 --============================================================================
 -- Gold Transfer Popup
@@ -303,10 +425,10 @@ local function CreateGoldTransferPopup()
         
         if self.mode == "deposit" then
             self.titleText:SetText("Deposit to Warband Bank")
-            self.balanceText:SetText("Your Gold: " .. GetCoinTextureString(playerBalance))
+            self.balanceText:SetText(format("Your Gold: %s", GetCoinTextureString(playerBalance)))
         else
             self.titleText:SetText("Withdraw from Warband Bank")
-            self.balanceText:SetText("Warband Bank: " .. GetCoinTextureString(warbandBalance))
+            self.balanceText:SetText(format("Warband Bank: %s", GetCoinTextureString(warbandBalance)))
         end
         
         -- Update quick buttons availability
@@ -836,9 +958,6 @@ function WarbandNexus:CreateMainWindow()
     classicBtn:SetPoint("RIGHT", -10, 0)
     classicBtn:SetText("Classic Bank")
     classicBtn:SetScript("OnClick", function()
-        -- #region agent log [Classic Bank button click]
-        WarbandNexus:Debug("CLASSIC-BTN: Clicked, bankIsOpen=" .. tostring(WarbandNexus.bankIsOpen))
-        -- #endregion
         if WarbandNexus.bankIsOpen then
             WarbandNexus:ShowDefaultBankFrame()
         else
@@ -1059,7 +1178,7 @@ function WarbandNexus:UpdateFooter()
     local lastScan = math.max(wbScan, pbScan)
     local scanText = lastScan > 0 and date("%m/%d %H:%M", lastScan) or "Never"
     
-    mainFrame.footerText:SetText(totalCount .. " items cached • Last scan: " .. scanText)
+    mainFrame.footerText:SetText(format("%d items cached • Last scan: %s", totalCount, scanText))
     
     -- Update "Up-to-Date" status indicator (next to Scan button)
     if mainFrame.scanStatus then
@@ -1100,6 +1219,9 @@ local expandedGroups = {}
 function WarbandNexus:DrawItemList(parent)
     local yOffset = 10
     local width = parent:GetWidth() - 16
+    
+    -- PERFORMANCE: Release pooled frames back to pool before redrawing
+    ReleaseAllPooledChildren(parent)
     
     -- CRITICAL: Sync WoW bank tab whenever we draw the item list
     -- This ensures right-click deposits go to the correct bank
@@ -1148,7 +1270,6 @@ function WarbandNexus:DrawItemList(parent)
     personalText:SetText(isPersonalActive and "|cff88ff88Personal Bank|r" or "|cff888888Personal Bank|r")
     
     personalBtn:SetScript("OnClick", function()
-        WarbandNexus:Debug("TAB-SWITCH: User clicked Personal sub-tab")
         currentItemsSubTab = "personal"
         WarbandNexus:SyncBankTab()
         WarbandNexus:RefreshUI()
@@ -1174,7 +1295,6 @@ function WarbandNexus:DrawItemList(parent)
     warbandText:SetText(isWarbandActive and "|cffa335eeWarband Bank|r" or "|cff888888Warband Bank|r")
     
     warbandBtn:SetScript("OnClick", function()
-        WarbandNexus:Debug("TAB-SWITCH: User clicked Warband sub-tab")
         currentItemsSubTab = "warband"
         WarbandNexus:SyncBankTab()
         WarbandNexus:RefreshUI()
@@ -1343,7 +1463,7 @@ function WarbandNexus:DrawItemList(parent)
         
         local ghTitle = groupHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         ghTitle:SetPoint("LEFT", 22, 0)
-        ghTitle:SetText("|cffffcc00" .. typeName .. "|r |cff888888(" .. #group.items .. ")|r")
+        ghTitle:SetText(format("|cffffcc00%s|r |cff888888(%d)|r", typeName, #group.items))
         
         -- Click to expand/collapse (uses persisted state)
         local gKey = group.groupKey
@@ -1362,59 +1482,40 @@ function WarbandNexus:DrawItemList(parent)
                 rowIdx = rowIdx + 1
                 local i = rowIdx
                 
-                local row = CreateFrame("Button", nil, parent)
-                row:SetSize(width, ROW_HEIGHT)
+                -- PERFORMANCE: Acquire from pool instead of creating new
+                local row = AcquireItemRow(parent, width, ROW_HEIGHT)
+                row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", 8, -yOffset)
-                row:EnableMouse(true)
-                row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-                
-                local bg = row:CreateTexture(nil, "BACKGROUND")
-                bg:SetAllPoints()
-                bg:SetColorTexture(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
-                row.bg = bg
                 row.idx = i
                 
-                -- Count (at the beginning)
-                local qty = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                qty:SetPoint("LEFT", 15, 0)
-                qty:SetWidth(45)
-                qty:SetJustifyH("RIGHT")
-                qty:SetText("|cffffff00" .. (item.stackCount or 1) .. "|r")
+                -- Update background color (alternating rows)
+                row.bg:SetColorTexture(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
                 
-                -- Icon
-                local icon = row:CreateTexture(nil, "ARTWORK")
-                icon:SetSize(22, 22)
-                icon:SetPoint("LEFT", 70, 0)
-                icon:SetTexture(item.iconFileID or 134400)
+                -- Update quantity
+                row.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
                 
-                -- Name
+                -- Update icon
+                row.icon:SetTexture(item.iconFileID or 134400)
+                
+                -- Update name
                 local nameWidth = width - 200
-                local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                name:SetPoint("LEFT", 98, 0)
-                name:SetWidth(nameWidth)
-                name:SetJustifyH("LEFT")
-                name:SetWordWrap(false)
+                row.nameText:SetWidth(nameWidth)
+                local displayName = item.name or item.itemLink or format("Item %s", tostring(item.itemID or "?"))
+                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                 
-                local displayName = item.name or item.itemLink or ("Item " .. (item.itemID or "?"))
-                name:SetText("|cff" .. GetQualityHex(item.quality) .. displayName .. "|r")
-                
-                -- Location (clearer text)
-                local loc = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                loc:SetPoint("RIGHT", -10, 0)
-                loc:SetWidth(60)
-                loc:SetJustifyH("RIGHT")
-                
-                local locText = ""
+                -- Update location
+                local locText
                 if currentItemsSubTab == "warband" then
-                    locText = item.tabIndex and ("Tab " .. item.tabIndex) or ""
+                    locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
                 else
-                    locText = item.bagIndex and ("Bag " .. item.bagIndex) or ""
+                    locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
                 end
-                loc:SetText(locText)
-                loc:SetTextColor(0.5, 0.5, 0.5)
+                row.locationText:SetText(locText)
+                row.locationText:SetTextColor(0.5, 0.5, 0.5)
                 
+                -- Update hover/tooltip handlers
                 row:SetScript("OnEnter", function(self)
-                    bg:SetColorTexture(0.15, 0.15, 0.20, 1)
+                    self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                     if item.itemLink then
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:SetHyperlink(item.itemLink)
@@ -1434,16 +1535,13 @@ function WarbandNexus:DrawItemList(parent)
                     end
                 end)
                 row:SetScript("OnLeave", function(self)
-                    bg:SetColorTexture(self.idx % 2 == 0 and 0.07 or 0.05, self.idx % 2 == 0 and 0.07 or 0.05, self.idx % 2 == 0 and 0.09 or 0.06, 1)
+                    self.bg:SetColorTexture(self.idx % 2 == 0 and 0.07 or 0.05, self.idx % 2 == 0 and 0.07 or 0.05, self.idx % 2 == 0 and 0.09 or 0.06, 1)
                     GameTooltip:Hide()
                 end)
                 
                 -- Helper to get bag/slot IDs
                 local function GetItemBagSlot()
                     local bagID, slotID
-                    -- #region agent log [GetItemBagSlot Debug]
-                    WarbandNexus:Debug("GetItemBagSlot: subTab=" .. tostring(currentItemsSubTab) .. ", tabIndex=" .. tostring(item.tabIndex) .. ", bagIndex=" .. tostring(item.bagIndex) .. ", slotID=" .. tostring(item.slotID))
-                    -- #endregion
                     
                     if currentItemsSubTab == "warband" and item.tabIndex then
                         local warbandBags = {

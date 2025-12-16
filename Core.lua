@@ -78,6 +78,12 @@ ns.PERSONAL_BANK_BAGS = PERSONAL_BANK_BAGS
 ns.WARBAND_TAB_COUNT = WARBAND_TAB_COUNT
 ns.ITEM_CATEGORIES = ITEM_CATEGORIES
 
+-- Performance: Local function references
+local format = string.format
+local floor = math.floor
+local date = date
+local time = time
+
 --[[
     Database Defaults
     Profile-based structure for per-character settings
@@ -1268,10 +1274,12 @@ end
 
 ---Print a debug message
 ---@param message string The message to print
+-- PERFORMANCE: Early return if debug disabled (saves string operations)
 function WarbandNexus:Debug(message)
-    if self.db and self.db.profile.debug then
-        self:Print("|cff888888[Debug]|r " .. tostring(message))
+    if not (self.db and self.db.profile.debug) then
+        return  -- Skip entirely in production
     end
+    self:Print(format("|cff888888[Debug]|r %s", tostring(message)))
 end
 
 --[[
