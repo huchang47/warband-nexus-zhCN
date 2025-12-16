@@ -457,7 +457,8 @@ function WarbandNexus:CreateMainWindow()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetFrameStrata("HIGH")
+    f:SetFrameStrata("DIALOG")  -- DIALOG is above HIGH, ensures we're above BankFrame
+    f:SetFrameLevel(100)         -- Extra high level for safety
     f:SetClampedToScreen(true)
     
     -- Modern backdrop
@@ -507,20 +508,37 @@ function WarbandNexus:CreateMainWindow()
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     title:SetText("|cffffffffWarband Nexus|r")
     
-    -- Status badge
-    local statusBadge = CreateFrame("Frame", nil, header, "BackdropTemplate")
-    statusBadge:SetSize(70, 22)
-    statusBadge:SetPoint("LEFT", title, "RIGHT", 15, 0)
-    statusBadge:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    statusBadge:SetBackdropBorderColor(0, 0, 0, 0.5)
+    -- Status badge (modern rounded pill badge with NineSlice)
+    local statusBadge = CreateFrame("Frame", nil, header)
+    statusBadge:SetSize(76, 24)
+    statusBadge:SetPoint("LEFT", title, "RIGHT", 12, 0)
     f.statusBadge = statusBadge
     
+    -- Background with rounded corners using NineSlice
+    local bg = statusBadge:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.2, 0.7, 0.3, 0.25)
+    statusBadge.bg = bg
+    
+    -- Border using NineSlice for smooth rounded edges
+    if statusBadge.SetBorderBlendMode then
+        statusBadge:SetBorderBlendMode("ADD")
+    end
+    
+    -- Create rounded border using textures
+    local border = CreateFrame("Frame", nil, statusBadge, "BackdropTemplate")
+    border:SetAllPoints()
+    border:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    border:SetBackdropBorderColor(0.2, 0.7, 0.3, 0.6)
+    statusBadge.border = border
+
     local statusText = statusBadge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    statusText:SetPoint("CENTER")
+    statusText:SetPoint("CENTER", 0, 0)
+    statusText:SetFont(statusText:GetFont(), 11, "OUTLINE")
     f.statusText = statusText
     
     -- Close button
@@ -545,34 +563,63 @@ function WarbandNexus:CreateMainWindow()
     
     -- Tab styling function
     local function CreateTabButton(parent, text, key, xOffset)
-        local btn = CreateFrame("Button", nil, parent)
-        btn:SetSize(105, 32)  -- Standardized size
+        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(105, 34)  -- Slightly taller for modern look
         btn:SetPoint("LEFT", xOffset, 0)
         btn.key = key
+
+        -- Rounded background using backdrop with rounded edge texture
+        btn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false,
+            tileSize = 16,
+            edgeSize = 10,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+        btn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
         
-        local bg = btn:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.15, 0.15, 0.18, 1)
-        btn.bg = bg
+        -- Glow overlay for active/hover states
+        local glow = btn:CreateTexture(nil, "ARTWORK")
+        glow:SetPoint("TOPLEFT", 3, -3)
+        glow:SetPoint("BOTTOMRIGHT", -3, 3)
+        glow:SetColorTexture(0.6, 0.4, 0.9, 0.15)
+        glow:SetAlpha(0)
+        btn.glow = glow
         
+        -- Active indicator bar (bottom, rounded)
+        local activeBar = btn:CreateTexture(nil, "OVERLAY")
+        activeBar:SetHeight(3)
+        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
+        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
+        activeBar:SetColorTexture(0.6, 0.4, 0.9, 1)  -- Purple
+        activeBar:SetAlpha(0)
+        btn.activeBar = activeBar
+
         local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("CENTER")
+        label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
+        label:SetFont(label:GetFont(), 12, "")
         btn.label = label
-        
+
         btn:SetScript("OnEnter", function(self)
             if self.active then return end
-            bg:SetColorTexture(0.25, 0.15, 0.35, 1)  -- Light purple hover
+            self:SetBackdropColor(0.20, 0.14, 0.28, 1)  -- Purple tint hover
+            self:SetBackdropBorderColor(0.6, 0.4, 0.9, 0.8)  -- Purple border
+            glow:SetAlpha(0.3)
         end)
         btn:SetScript("OnLeave", function(self)
             if self.active then return end
-            bg:SetColorTexture(0.15, 0.15, 0.18, 1)
+            self:SetBackdropColor(0.12, 0.12, 0.15, 1)
+            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            glow:SetAlpha(0)
         end)
         btn:SetScript("OnClick", function(self)
             f.currentTab = self.key
             WarbandNexus:PopulateContent()
         end)
-        
+
         return btn
     end
     
@@ -754,16 +801,32 @@ function WarbandNexus:PopulateContent()
     -- Update status
     self:UpdateStatus()
     
-    -- Update tabs
+    -- Update tabs with modern active state (rounded style)
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
-            btn.bg:SetColorTexture(unpack(COLORS.accentDark))
+            btn:SetBackdropColor(0.18, 0.12, 0.24, 1)  -- Darker purple for active
+            btn:SetBackdropBorderColor(0.6, 0.4, 0.9, 1)  -- Bright purple border
             btn.label:SetTextColor(1, 1, 1)
+            btn.label:SetFont(btn.label:GetFont(), 12, "OUTLINE")
+            if btn.glow then
+                btn.glow:SetAlpha(0.25)  -- Show glow for active
+            end
+            if btn.activeBar then
+                btn.activeBar:SetAlpha(1)  -- Show active indicator
+            end
         else
             btn.active = false
-            btn.bg:SetColorTexture(0.15, 0.15, 0.18, 1)
+            btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+            btn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
             btn.label:SetTextColor(0.7, 0.7, 0.7)
+            btn.label:SetFont(btn.label:GetFont(), 12, "")
+            if btn.glow then
+                btn.glow:SetAlpha(0)  -- Hide glow
+            end
+            if btn.activeBar then
+                btn.activeBar:SetAlpha(0)  -- Hide active indicator
+            end
         end
     end
     
@@ -866,18 +929,30 @@ end
 --============================================================================
 function WarbandNexus:UpdateStatus()
     if not mainFrame then return end
-    
+
     local isOpen = self.bankIsOpen
     if isOpen then
-        mainFrame.statusBadge:SetBackdropColor(0.2, 0.7, 0.3, 1)
-        mainFrame.statusText:SetText("Bank On")
-        mainFrame.statusText:SetTextColor(0.4, 1, 0.4)
+        -- Green badge for "Bank On" (rounded style)
+        if mainFrame.statusBadge.bg then
+            mainFrame.statusBadge.bg:SetColorTexture(0.15, 0.6, 0.25, 0.25)
+        end
+        if mainFrame.statusBadge.border then
+            mainFrame.statusBadge.border:SetBackdropBorderColor(0.2, 0.9, 0.3, 0.8)
+        end
+        mainFrame.statusText:SetText("LIVE")
+        mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
     else
-        mainFrame.statusBadge:SetBackdropColor(0.25, 0.25, 0.28, 1)
-        mainFrame.statusText:SetText("Bank Off")
-        mainFrame.statusText:SetTextColor(0.6, 0.6, 0.6)
+        -- Gray badge for "Bank Off" (rounded style)
+        if mainFrame.statusBadge.bg then
+            mainFrame.statusBadge.bg:SetColorTexture(0.2, 0.2, 0.22, 0.25)
+        end
+        if mainFrame.statusBadge.border then
+            mainFrame.statusBadge.border:SetBackdropBorderColor(0.5, 0.5, 0.54, 0.6)
+        end
+        mainFrame.statusText:SetText("CACHED")
+        mainFrame.statusText:SetTextColor(0.6, 0.6, 0.65)
     end
-    
+
     -- Update button states based on bank status
     self:UpdateButtonStates()
 end

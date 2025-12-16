@@ -61,10 +61,6 @@ if #PERSONAL_BANK_BAGS == 0 then
     PERSONAL_BANK_BAGS = { -1, 6, 7, 8, 9, 10, 11 }
 end
 
--- Debug: Print PERSONAL_BANK_BAGS to verify they don't overlap with Warband
-print("|cffff6600[DEBUG] PERSONAL_BANK_BAGS:|r", table.concat(PERSONAL_BANK_BAGS, ", "))
-print("|cffff6600[DEBUG] WARBAND_BAGS:|r", table.concat(WARBAND_BAGS, ", "))
-
 -- Item Categories for grouping
 local ITEM_CATEGORIES = {
     WEAPON = 1,
@@ -651,18 +647,24 @@ end
 -- Note: We no longer use UnregisterAllEvents because it triggers BANKFRAME_CLOSED
 -- Instead we just hide and move the frame off-screen
 
--- Suppress default Blizzard bank frames by hiding them
+-- Suppress default Blizzard bank frames by moving them off-screen
 function WarbandNexus:SuppressDefaultBankFrame()
-    -- Hide BankFrame by setting alpha to 0
+    -- Move BankFrame off-screen (keeps events working but not visible/interactable)
     if BankFrame then
-        BankFrame:SetAlpha(0)
+        BankFrame:ClearAllPoints()
+        BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, -10000)
+        BankFrame:SetFrameStrata("BACKGROUND")
         BankFrame:EnableMouse(false)
+        BankFrame:SetAlpha(0)
     end
     
-    -- Also hide AccountBankPanel if it exists
+    -- Also move AccountBankPanel off-screen
     if AccountBankPanel then
-        AccountBankPanel:SetAlpha(0)
+        AccountBankPanel:ClearAllPoints()
+        AccountBankPanel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, -10000)
+        AccountBankPanel:SetFrameStrata("BACKGROUND")
         AccountBankPanel:EnableMouse(false)
+        AccountBankPanel:SetAlpha(0)
     end
 
     self.bankFrameSuppressed = true
@@ -670,16 +672,22 @@ end
 
 -- Restore default Blizzard bank frames (for Classic Bank button or bank close)
 function WarbandNexus:RestoreDefaultBankFrame()
-    -- Restore BankFrame visibility
+    -- Move BankFrame back to screen
     if BankFrame then
-        BankFrame:SetAlpha(1)
+        BankFrame:ClearAllPoints()
+        BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
+        BankFrame:SetFrameStrata("HIGH")
         BankFrame:EnableMouse(true)
+        BankFrame:SetAlpha(1)
     end
     
-    -- Restore AccountBankPanel visibility
+    -- Move AccountBankPanel back
     if AccountBankPanel then
-        AccountBankPanel:SetAlpha(1)
+        AccountBankPanel:ClearAllPoints()
+        AccountBankPanel:SetPoint("TOPLEFT", BankFrame, "TOPRIGHT", 0, 0)
+        AccountBankPanel:SetFrameStrata("HIGH")
         AccountBankPanel:EnableMouse(true)
+        AccountBankPanel:SetAlpha(1)
     end
 
     self.bankFrameSuppressed = false

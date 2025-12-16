@@ -261,19 +261,11 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
     local personalData = self.db.char.personalBank
     
     if not personalData or not personalData.items then
-        print("|cffff0000[DEBUG] GetPersonalBankItems: No personalData!|r")
         return items
     end
     
     -- Return cached Personal bank items (scan already filtered them correctly)
-    local bagSummary = {}
     for bagIndex, bagData in pairs(personalData.items) do
-        local actualBagID = ns.PERSONAL_BANK_BAGS[bagIndex]
-        local itemCount = 0
-        for _ in pairs(bagData) do itemCount = itemCount + 1 end
-        
-        table.insert(bagSummary, "Bag[" .. bagIndex .. "]=ID:" .. tostring(actualBagID) .. ",Items:" .. itemCount)
-        
         for slotID, itemData in pairs(bagData) do
             itemData.bagIndex = bagIndex
             itemData.slotID = slotID
@@ -281,9 +273,6 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
             tinsert(items, itemData)
         end
     end
-    
-    print("|cff00ff00[DEBUG] GetPersonalBankItems:|r " .. table.concat(bagSummary, " | "))
-    print("|cff00ff00[DEBUG] Total items:|r " .. #items)
     
     -- Sort by quality (highest first), then name
     table.sort(items, function(a, b)
