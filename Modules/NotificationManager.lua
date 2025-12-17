@@ -463,3 +463,4 @@ function WarbandNexus:TestVaultCheck()
     
     self:Print("|cff00ccff======================|r")
 end
+

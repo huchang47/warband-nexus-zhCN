@@ -251,6 +251,65 @@ function WarbandNexus:DrawPvEProgress(parent)
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name, char.level or 1))
         
+        -- Great Vault Ready Indicator (next to character name)
+        local pve = char.pve or {}
+        local hasVaultReward = false
+        
+        -- Check TWO conditions:
+        -- 1. Has unclaimed rewards from LAST week (opened vault but didn't loot)
+        -- 2. Has at least one slot complete THIS week (progress >= threshold)
+        
+        if pve.hasUnclaimedRewards then
+            hasVaultReward = true
+        elseif pve.greatVault and #pve.greatVault > 0 then
+            -- Check if any vault activity is complete (at least one slot ready)
+            for _, activity in ipairs(pve.greatVault) do
+                local progress = activity.progress or 0
+                local threshold = activity.threshold or 0
+                if progress >= threshold and threshold > 0 then
+                    hasVaultReward = true
+                    break
+                end
+            end
+        end
+        
+        if hasVaultReward then
+            -- Vault Ready container
+            local vaultContainer = CreateFrame("Frame", nil, charCard)
+            vaultContainer:SetSize(120, 20)
+            vaultContainer:SetPoint("LEFT", charHeader, "RIGHT", 10, 0)
+            
+            -- Treasure icon
+            local vaultIcon = vaultContainer:CreateTexture(nil, "ARTWORK")
+            vaultIcon:SetSize(18, 18)
+            vaultIcon:SetPoint("LEFT", 0, 0)
+            vaultIcon:SetTexture("Interface\\Icons\\achievement_guildperk_bountifulbags")
+            
+            -- "Great Vault" text
+            local vaultText = vaultContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            vaultText:SetPoint("LEFT", vaultIcon, "RIGHT", 4, 0)
+            vaultText:SetText("Great Vault")
+            vaultText:SetTextColor(0.9, 0.9, 0.9)
+            
+            -- Green checkmark
+            local checkmark = vaultContainer:CreateTexture(nil, "OVERLAY")
+            checkmark:SetSize(16, 16)
+            checkmark:SetPoint("LEFT", vaultText, "RIGHT", 4, 0)
+            checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+            
+            -- Tooltip on hover
+            vaultContainer:EnableMouse(true)
+            vaultContainer:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("|cff00ff00Weekly Vault Ready!|r")
+                GameTooltip:AddLine("This character has unclaimed rewards", 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            vaultContainer:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+        
         -- Last updated time
         local lastSeen = char.lastSeen or 0
         local lastSeenText = ""
@@ -274,8 +333,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         lastSeenLabel:SetText("|cff888888" .. lastSeenText .. "|r")
         
         cardYOffset = cardYOffset + 25
-        
-        local pve = char.pve or {}
         
         -- Create three-column layout for symmetrical display
         local columnWidth = (width - 60) / 3  -- 3 equal columns with spacing

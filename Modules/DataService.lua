@@ -191,6 +191,14 @@ function WarbandNexus:CollectPvEData()
         end
     end
     
+    -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
+    -- This checks if the player has rewards waiting from LAST week (not current progress)
+    if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+        pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+    else
+        pve.hasUnclaimedRewards = false
+    end
+    
     -- ===== RAID/INSTANCE LOCKOUTS =====
     if GetNumSavedInstances then
         local numSaved = GetNumSavedInstances()

@@ -26,7 +26,7 @@ function WarbandNexus:ScanWarbandBank()
         -- Try direct bag check
         local firstBagID = Enum.BagIndex.AccountBankTab_1
         local numSlots = C_Container.GetContainerNumSlots(firstBagID)
-
+        
         if not numSlots or numSlots == 0 then
             return false
         end
@@ -138,7 +138,7 @@ function WarbandNexus:ScanPersonalBank()
             return false
         end
     end
-
+    
     -- Initialize structure
     if not self.db.char.personalBank then
         self.db.char.personalBank = { items = {}, lastScan = 0 }
