@@ -25,6 +25,41 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Get all characters
     local characters = self:GetAllCharacters()
     
+    -- Get current player key
+    local currentPlayerName = UnitName("player")
+    local currentPlayerRealm = GetRealmName()
+    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    
+    -- Load sorting preferences from profile (persistent across sessions)
+    if not parent.sortPrefsLoaded then
+        parent.sortKey = self.db.profile.pveSort.key
+        parent.sortAscending = self.db.profile.pveSort.ascending
+        parent.sortPrefsLoaded = true
+    end
+    
+    -- ===== SORT CHARACTERS (Current player always on top!) =====
+    table.sort(characters, function(a, b)
+        local keyA = (a.name or "Unknown") .. "-" .. (a.realm or "Unknown")
+        local keyB = (b.name or "Unknown") .. "-" .. (b.realm or "Unknown")
+        
+        -- 1. Current player always comes first
+        local isCurrentA = (keyA == currentPlayerKey)
+        local isCurrentB = (keyB == currentPlayerKey)
+        
+        if isCurrentA and not isCurrentB then
+            return true
+        elseif not isCurrentA and isCurrentB then
+            return false
+        end
+        
+        -- 2. Default sort: Level (desc) → Name (asc)
+        if (a.level or 0) ~= (b.level or 0) then
+            return (a.level or 0) > (b.level or 0)
+        else
+            return (a.name or ""):lower() < (b.name or ""):lower()
+        end
+    end)
+    
     -- ===== HEADER CARD =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
@@ -158,9 +193,60 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         local cardYOffset = 12
         
-        -- Character header
+        -- Favorite button (star icon)
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isFavorite = self:IsFavoriteCharacter(charKey)
+        
+        local favButton = CreateFrame("Button", nil, charCard)
+        favButton:SetSize(20, 20)
+        favButton:SetPoint("TOPLEFT", 15, -cardYOffset)
+        
+        local favIcon = favButton:CreateTexture(nil, "ARTWORK")
+        favIcon:SetAllPoints()
+        if isFavorite then
+            favIcon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")  -- Filled star
+            favIcon:SetVertexColor(1, 0.84, 0)  -- Gold color
+        else
+            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")  -- Empty star
+            favIcon:SetDesaturated(true)
+            favIcon:SetVertexColor(0.5, 0.5, 0.5)
+        end
+        favButton.icon = favIcon
+        favButton.charKey = charKey
+        
+        favButton:SetScript("OnClick", function(btn)
+            local newStatus = self:ToggleFavoriteCharacter(btn.charKey)
+            -- Update icon
+            if newStatus then
+                btn.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+                btn.icon:SetDesaturated(false)
+                btn.icon:SetVertexColor(1, 0.84, 0)
+            else
+                btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
+                btn.icon:SetDesaturated(true)
+                btn.icon:SetVertexColor(0.5, 0.5, 0.5)
+            end
+            -- Refresh to re-sort
+            self:RefreshUI()
+        end)
+        
+        favButton:SetScript("OnEnter", function(btn)
+            GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+            if isFavorite then
+                GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
+            else
+                GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
+            end
+            GameTooltip:Show()
+        end)
+        
+        favButton:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
+        -- Character header (shifted right to make room for star)
         local charHeader = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        charHeader:SetPoint("TOPLEFT", 15, -cardYOffset)
+        charHeader:SetPoint("TOPLEFT", 42, -cardYOffset)  -- Shifted right
         charHeader:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888Lv %d|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name, char.level or 1))

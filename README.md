@@ -31,7 +31,11 @@
 - **Enhanced Tooltips** - Hover over items to see all locations (with Shift+Click to search)
 
 ### 📊 **Character Overview**
-- **Sortable Character List** - Click headers to sort by name, level, gold, or last seen
+- **Smart Sorting** - 3-state sorting (ascending → descending → default)
+  - Current character always appears at the top
+  - Click column headers to cycle through sort states
+  - Sorting preferences saved across sessions
+- **Favorite Characters** ⭐ - Star your favorite characters (visual indicator)
 - **Class Colors** - Characters displayed in class colors
 - **Realm Support** - Works across multiple realms
 - **Last Seen Tracking** - Know when each character was last played
@@ -104,6 +108,22 @@
 2. Type in the search box
 3. Results filter live as you type
 4. Use **Shift+Click** on any item tooltip to search
+
+### **Sorting Characters**
+1. Go to **Characters** tab
+2. Click any column header (Character, Level, Gold, Last Seen)
+3. Click once: Sort ascending (^)
+4. Click twice: Sort descending (v)
+5. Click third time: Reset to default sort (level → name)
+6. Your current character always stays at the top
+7. Sorting preferences are saved automatically
+
+### **Favorite Characters**
+1. Go to **Characters** or **PvE** tab
+2. Click the ⭐ star icon next to any character to mark as favorite
+3. Favorites are a visual indicator (gold star)
+4. Click again to remove the star
+5. Favorites are synced across all characters
 
 ## 🔧 Slash Commands
 

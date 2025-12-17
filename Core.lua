@@ -129,6 +129,18 @@ local defaults = {
             personal = false,  -- Personal collapsed by default
             categories = {},  -- {["warband_TradeGoods"] = true, ["personal_CharName_TradeGoods"] = false}
         },
+        
+        -- Character list sorting preferences
+        characterSort = {
+            key = nil,        -- nil = no sorting (default order), "name", "level", "gold", "lastSeen"
+            ascending = true, -- true = ascending, false = descending
+        },
+        
+        -- PvE list sorting preferences
+        pveSort = {
+            key = nil,        -- nil = no sorting (default order)
+            ascending = true,
+        },
     },
     global = {
         -- Warband bank cache (SHARED across all characters)
@@ -141,6 +153,10 @@ local defaults = {
         -- All tracked characters
         -- Key: "CharacterName-RealmName"
         characters = {},
+        
+        -- Favorite characters (always shown at top)
+        -- Array of "CharacterName-RealmName" keys
+        favoriteCharacters = {},
         
         -- Window size persistence
         window = {
@@ -1388,6 +1404,71 @@ function WarbandNexus:PrintPvEData()
         self.db.global.characters[key].lastSeen = time()
         self:Print("|cff00ff00Data saved! Use /wn pve to view in UI|r")
     end
+end
+
+--[[============================================================================
+    FAVORITE CHARACTERS MANAGEMENT
+============================================================================]]
+
+---Check if a character is favorited
+---@param characterKey string Character key ("Name-Realm")
+---@return boolean
+function WarbandNexus:IsFavoriteCharacter(characterKey)
+    if not self.db or not self.db.global or not self.db.global.favoriteCharacters then
+        return false
+    end
+    
+    for _, favKey in ipairs(self.db.global.favoriteCharacters) do
+        if favKey == characterKey then
+            return true
+        end
+    end
+    
+    return false
+end
+
+---Toggle favorite status for a character
+---@param characterKey string Character key ("Name-Realm")
+---@return boolean New favorite status
+function WarbandNexus:ToggleFavoriteCharacter(characterKey)
+    if not self.db or not self.db.global then
+        return false
+    end
+    
+    -- Initialize if needed
+    if not self.db.global.favoriteCharacters then
+        self.db.global.favoriteCharacters = {}
+    end
+    
+    local favorites = self.db.global.favoriteCharacters
+    local isFavorite = self:IsFavoriteCharacter(characterKey)
+    
+    if isFavorite then
+        -- Remove from favorites
+        for i, favKey in ipairs(favorites) do
+            if favKey == characterKey then
+                table.remove(favorites, i)
+                self:Print("|cffffff00Removed from favorites:|r " .. characterKey)
+                break
+            end
+        end
+        return false
+    else
+        -- Add to favorites
+        table.insert(favorites, characterKey)
+        self:Print("|cffffd700Added to favorites:|r " .. characterKey)
+        return true
+    end
+end
+
+---Get all favorite characters
+---@return table Array of favorite character keys
+function WarbandNexus:GetFavoriteCharacters()
+    if not self.db or not self.db.global or not self.db.global.favoriteCharacters then
+        return {}
+    end
+    
+    return self.db.global.favoriteCharacters
 end
 
 -- PerformItemSearch() moved to Modules/DataService.lua

@@ -23,10 +23,16 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Get all characters (cached for performance)
     local characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
     
-    -- Sorting state (persisted across refreshes)
-    if not parent.sortKey then
-        parent.sortKey = "name" -- Default sort by name
-        parent.sortAscending = true
+    -- Get current player key
+    local currentPlayerName = UnitName("player")
+    local currentPlayerRealm = GetRealmName()
+    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    
+    -- Load sorting preferences from profile (persistent across sessions)
+    if not parent.sortPrefsLoaded then
+        parent.sortKey = self.db.profile.characterSort.key
+        parent.sortAscending = self.db.profile.characterSort.ascending
+        parent.sortPrefsLoaded = true
     end
     
     -- ===== TITLE CARD =====
@@ -46,7 +52,18 @@ function WarbandNexus:DrawCharacterList(parent)
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    subtitleText:SetText(#characters .. " characters tracked")
+    
+    -- Show sorting status
+    local sortText = #characters .. " characters tracked"
+    if parent.sortKey then
+        local sortLabels = {name = "Name", level = "Level", gold = "Gold", lastSeen = "Last Seen"}
+        local sortLabel = sortLabels[parent.sortKey] or parent.sortKey
+        local sortDir = parent.sortAscending and "ascending" or "descending"
+        sortText = sortText .. "  |  |cff9966ffSorted by: " .. sortLabel .. " (" .. sortDir .. ")|r"
+    else
+        sortText = sortText .. "  |  |cff888888Default sort|r"
+    end
+    subtitleText:SetText(sortText)
     
     yOffset = yOffset + 75 -- Reduced spacing
     
@@ -86,9 +103,12 @@ function WarbandNexus:DrawCharacterList(parent)
         columns,
         width,
         function(sortKey, isAscending)
-            -- Save sort state
+            -- Save sort state (local)
             parent.sortKey = sortKey
             parent.sortAscending = isAscending
+            -- Save to profile (persistent)
+            self.db.profile.characterSort.key = sortKey
+            self.db.profile.characterSort.ascending = isAscending
             -- Refresh to re-sort
             self:RefreshUI()
         end,
@@ -99,8 +119,32 @@ function WarbandNexus:DrawCharacterList(parent)
     header:SetPoint("TOPLEFT", 10, -yOffset)
     yOffset = yOffset + 32
     
-    -- ===== SORT CHARACTERS =====
+    -- ===== SORT CHARACTERS (Current player always on top!) =====
     table.sort(characters, function(a, b)
+        local keyA = (a.name or "Unknown") .. "-" .. (a.realm or "Unknown")
+        local keyB = (b.name or "Unknown") .. "-" .. (b.realm or "Unknown")
+        
+        -- 1. Current player always comes first
+        local isCurrentA = (keyA == currentPlayerKey)
+        local isCurrentB = (keyB == currentPlayerKey)
+        
+        if isCurrentA and not isCurrentB then
+            return true
+        elseif not isCurrentA and isCurrentB then
+            return false
+        end
+        
+        -- 2. If sorting is disabled (nil), use default order (level desc → name asc)
+        if not parent.sortKey then
+            -- Default: Level (desc) → Name (asc)
+            if (a.level or 0) ~= (b.level or 0) then
+                return (a.level or 0) > (b.level or 0)
+            else
+                return (a.name or ""):lower() < (b.name or ""):lower()
+            end
+        end
+        
+        -- 3. Sort by selected column
         local key = parent.sortKey
         local asc = parent.sortAscending
         
@@ -167,10 +211,61 @@ function WarbandNexus:DrawCharacterList(parent)
         -- Class color
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         
+        -- Favorite button (star icon)
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isFavorite = WarbandNexus:IsFavoriteCharacter(charKey)
+        
+        local favButton = CreateFrame("Button", nil, row)
+        favButton:SetSize(20, 20)
+        favButton:SetPoint("LEFT", 12, 0)
+        
+        local favIcon = favButton:CreateTexture(nil, "ARTWORK")
+        favIcon:SetAllPoints()
+        if isFavorite then
+            favIcon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")  -- Filled star
+            favIcon:SetVertexColor(1, 0.84, 0)  -- Gold color
+        else
+            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")  -- Empty star
+            favIcon:SetDesaturated(true)
+            favIcon:SetVertexColor(0.5, 0.5, 0.5)
+        end
+        favButton.icon = favIcon
+        favButton.charKey = charKey
+        
+        favButton:SetScript("OnClick", function(self)
+            local newStatus = WarbandNexus:ToggleFavoriteCharacter(self.charKey)
+            -- Update icon
+            if newStatus then
+                self.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+                self.icon:SetDesaturated(false)
+                self.icon:SetVertexColor(1, 0.84, 0)
+            else
+                self.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
+                self.icon:SetDesaturated(true)
+                self.icon:SetVertexColor(0.5, 0.5, 0.5)
+            end
+            -- Refresh to re-sort
+            WarbandNexus:RefreshUI()
+        end)
+        
+        favButton:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if isFavorite then
+                GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
+            else
+                GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
+            end
+            GameTooltip:Show()
+        end)
+        
+        favButton:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        
         -- Class icon
         local classIcon = row:CreateTexture(nil, "ARTWORK")
         classIcon:SetSize(24, 24)
-        classIcon:SetPoint("LEFT", 12, 0)
+        classIcon:SetPoint("LEFT", 38, 0)  -- Shifted right to make room for star
         local coords = CLASS_ICON_TCOORDS[char.classFile]
         if coords then
             classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
@@ -181,8 +276,8 @@ function WarbandNexus:DrawCharacterList(parent)
         
         -- Character name (in class color)
         local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameText:SetPoint("LEFT", 44, 0)
-        nameText:SetWidth(145)
+        nameText:SetPoint("LEFT", 70, 0)  -- Shifted right to make room for star
+        nameText:SetWidth(120)  -- Reduced width slightly
         nameText:SetJustifyH("LEFT")
         nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
