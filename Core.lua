@@ -103,6 +103,9 @@ local defaults = {
             lock = false,
         },
         
+        -- Bank addon conflict resolution (per-addon choices)
+        bankConflictChoices = {},
+        
         -- Behavior settings
         autoScan = true,           -- Auto-scan when bank opens
         autoOpenWindow = true,     -- Auto-open addon window when bank opens
@@ -225,6 +228,10 @@ function WarbandNexus:OnEnable()
         return
     end
     
+    -- Initialize conflict queue and guards
+    self._conflictQueue = {}
+    self._isProcessingConflict = false
+    
     -- Session flag to prevent duplicate saves
     self.characterSaved = false
     
@@ -264,7 +271,6 @@ function WarbandNexus:OnEnable()
     -- Note: ContainerFrameItemButton_OnModifiedClick was removed in TWW (11.0+)
     -- We now rely on BAG_UPDATE_DELAYED event for UI updates
     if not self.containerHooked then
-        self:Debug("Container monitoring initialized (using BAG_UPDATE_DELAYED event)")
         self.containerHooked = true
     end
     
@@ -330,22 +336,12 @@ function WarbandNexus:OnEnable()
     end
     
     -- Loot Notifications: Mount/Pet/Toy detection
-    print("|cff00ccff[WarbandNexus]|r Checking for InitializeLootNotifications...")
-    print("|cff00ccff[WarbandNexus]|r self.InitializeLootNotifications = " .. tostring(self.InitializeLootNotifications))
-    
     if self.InitializeLootNotifications then
-        print("|cff00ccff[WarbandNexus]|r Initializing Loot Notifications...")
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.InitializeLootNotifications then
                 WarbandNexus:InitializeLootNotifications()
-                print("|cff00ff00[WarbandNexus]|r Loot Notifications initialized! ✓")
-            else
-                print("|cffff0000[WarbandNexus]|r ERROR: InitializeLootNotifications not found in timer!|r")
             end
         end)
-    else
-        print("|cffff6600[WarbandNexus]|r WARNING: InitializeLootNotifications function not available|r")
-        print("|cffff6600[WarbandNexus]|r NotificationManager may not be loaded properly!|r")
     end
     
     -- Print loaded message
@@ -381,8 +377,6 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
-    
-    self:Debug("OnDisable complete")
 end
 
 --[[
@@ -420,6 +414,8 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn minimap - Toggle minimap button visibility")
         self:Print("  /wn vaultcheck - Test Weekly Vault notification system")
         self:Print("  /wn testloot [mount|pet|toy|spam] - Test loot notification (spam=5 toasts)")
+        self:Print("  /wn bankcheck - Check for bank addon conflicts")
+        self:Print("  /wn bankreset - Reset bank addon choice (re-show popup)")
         self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
         self:Print("  /wn debug - Toggle debug mode")
         return
@@ -517,6 +513,40 @@ function WarbandNexus:SlashCommand(input)
         else
             self:Print("Minimap button module not loaded")
         end
+    
+    elseif cmd == "bankcheck" then
+        -- Check for bank addon conflicts
+        local conflicts = self:DetectBankAddonConflicts()
+        
+        self:Print("=== Bank Conflict Status ===")
+        
+        if conflicts and #conflicts > 0 then
+            self:Print("Conflicting addons detected:")
+            for _, addonName in ipairs(conflicts) do
+                local choice = self.db.profile.bankConflictChoices[addonName]
+                if choice == "useWarband" then
+                    self:Print(string.format("  |cff00ccff%s|r: |cff00ff00Using Warband Nexus|r", addonName))
+                elseif choice == "useOther" then
+                    self:Print(string.format("  |cff00ccff%s|r: |cff888888Using %s|r", addonName, addonName))
+                else
+                    self:Print(string.format("  |cff00ccff%s|r: |cffff9900Not resolved yet|r", addonName))
+                end
+            end
+            self:Print("")
+            self:Print("To reset: Type |cff00ccff/wn bankreset|r")
+        else
+            self:Print("|cff00ff00✓ No conflicts detected|r")
+            self:Print("Warband Nexus is managing your bank UI!")
+        end
+        
+        self:Print("==========================")
+    
+    elseif cmd == "bankreset" then
+        -- Reset ALL bank conflict choices
+        self.db.profile.bankConflictChoices = {}
+        self:ClearConflictCache()
+        self:Print("|cff00ff00All bank conflict choices reset!|r")
+        self:Print("Type |cff00ccff/reload|r to see conflict popups again.")
     
     elseif cmd == "vaultcheck" or cmd == "testvault" then
         -- Test vault notification system
@@ -651,35 +681,38 @@ end
 function WarbandNexus:OnBankOpened()
     self.bankIsOpen = true
     
-    -- Read which tab Blizzard selected when bank opened
-    -- Tab 1 = Personal Bank, Tab 2 = Warband Bank
-    local blizzardSelectedTab = nil
-    if BankFrame then
-        blizzardSelectedTab = BankFrame.selectedTab or BankFrame.activeTabIndex
-        if not blizzardSelectedTab and BankFrame.TabSystem then
-            blizzardSelectedTab = BankFrame.TabSystem.selectedTab
+    -- Check if ANY conflict addon was chosen as "useOther" (background mode)
+    local useOtherAddon = self:IsUsingOtherBankAddon()
+    
+    if not useOtherAddon then
+        -- Normal mode: WarbandNexus manages bank UI
+        -- Read which tab Blizzard selected when bank opened
+        local blizzardSelectedTab = nil
+        if BankFrame then
+            blizzardSelectedTab = BankFrame.selectedTab or BankFrame.activeTabIndex
+            if not blizzardSelectedTab and BankFrame.TabSystem then
+                blizzardSelectedTab = BankFrame.TabSystem.selectedTab
+            end
+        end
+        
+        local warbandTabID = BankFrame and BankFrame.accountBankTabID or 2
+        
+        -- Determine bank type: Default to Personal Bank unless Warband tab is selected
+        if blizzardSelectedTab == warbandTabID then
+            self.currentBankType = "warband"
+        else
+            self.currentBankType = "personal"
         end
     end
     
-    local warbandTabID = BankFrame and BankFrame.accountBankTabID or 2
-    
-    -- Determine bank type: Default to Personal Bank unless Warband tab is selected
-    if blizzardSelectedTab == warbandTabID then
-        self.currentBankType = "warband"
-    else
-        self.currentBankType = "personal"
-    end
-    
-    self:Debug("OPEN: Selected bank type = " .. self.currentBankType)
-    
-    -- Scan personal bank BEFORE suppressing BankFrame
+    -- Always scan banks (for caching) - BEFORE suppressing BankFrame
     if self.db.profile.autoScan and self.ScanPersonalBank then
         self:ScanPersonalBank()
     end
     
-    -- Open player bags (DON'T suppress here - already done in OnEnable)
-        if OpenAllBags then
-            OpenAllBags()
+    -- Open player bags (only in normal mode)
+    if not useOtherAddon and OpenAllBags then
+        OpenAllBags()
     end
     
     -- Delayed operations for Warband bank
@@ -693,13 +726,15 @@ function WarbandNexus:OnBankOpened()
         if numSlots and numSlots > 0 then
             WarbandNexus.warbandBankIsOpen = true
             
+            -- Always scan for caching
             if WarbandNexus.db.profile.autoScan and WarbandNexus.ScanWarbandBank then
                 WarbandNexus:ScanWarbandBank()
             end
         end
         
-        -- Auto-open addon window with CORRECT tab based on NPC type
-        if WarbandNexus.db.profile.autoOpenWindow ~= false then
+        -- Auto-open window ONLY if using WarbandNexus mode
+        local useOther = WarbandNexus:IsUsingOtherBankAddon()
+        if not useOther and WarbandNexus.db.profile.autoOpenWindow ~= false then
             C_Timer.After(0.2, function()
                 if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
                     WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
@@ -712,16 +747,394 @@ end
 -- Note: We no longer use UnregisterAllEvents because it triggers BANKFRAME_CLOSED
 -- Instead we just hide and move the frame off-screen
 
+--[[
+    Detect conflicting bank addons (CACHED)
+    @return string|nil - Name of conflicting addon, or nil if none detected
+]]
+function WarbandNexus:DetectBankAddonConflicts()
+    -- Wrap in pcall to prevent errors from breaking the addon
+    local success, conflicts = pcall(function()
+        local found = {}
+        
+        -- TWW (11.0+) uses C_AddOns.IsAddOnLoaded(), older versions use IsAddOnLoaded()
+        local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
+        
+        -- Check ElvUI Bank Module (not just ElvUI itself!)
+        if IsLoaded("ElvUI") then
+            -- Check if ElvUI Bags module is enabled
+            local elvuiBagsEnabled = false
+            if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
+                elvuiBagsEnabled = ElvUI[1].private.bags.enable ~= false
+            end
+            
+            if elvuiBagsEnabled then
+                table.insert(found, "ElvUI")
+            end
+        end
+    
+        if IsLoaded("Baganator") then
+            table.insert(found, "Baganator")
+        end
+        
+        if IsLoaded("Bagnon") then
+            table.insert(found, "Bagnon")
+        end
+        
+        if IsLoaded("AdiBags") then
+            table.insert(found, "AdiBags")
+        end
+        
+        if IsLoaded("ArkInventory") then
+            table.insert(found, "ArkInventory")
+        end
+        
+        if IsLoaded("Inventorian") then
+            table.insert(found, "Inventorian")
+        end
+        
+        if IsLoaded("Combuctor") then
+            table.insert(found, "Combuctor")
+        end
+        
+        return found
+    end)
+    
+    if success then
+        return conflicts
+    else
+        return {}
+    end
+end
+
+--[[
+    Helper: Check if any conflict addon is set to "useOther"
+    Safe wrapper to prevent nil table errors
+]]
+function WarbandNexus:IsUsingOtherBankAddon()
+    if not self.db or not self.db.profile or not self.db.profile.bankConflictChoices then
+        return false
+    end
+    
+    for addonName, choice in pairs(self.db.profile.bankConflictChoices) do
+        if choice == "useOther" then
+            return true
+        end
+    end
+    
+    return false
+end
+
+--[[
+    Clear conflict cache (call this after disabling an addon)
+]]
+function WarbandNexus:ClearConflictCache()
+    self._conflictCheckCache = nil
+end
+
+--[[
+    Disable conflicting addon's bank module
+    @param addonName string - Name of conflicting addon
+    @return boolean success, string message
+]]
+function WarbandNexus:DisableConflictingBankModule(addonName)
+    -- ElvUI: Disable bags module
+    if addonName:match("^ElvUI") then
+        if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
+            ElvUI[1].private.bags.enable = false
+            return true, "ElvUI Bags module disabled. Please /reload to apply changes."
+        else
+            return false, "Could not access ElvUI settings. Please disable manually in ElvUI settings."
+        end
+    end
+    
+    -- TWW (11.0+) uses C_AddOns.DisableAddOn(), older versions use DisableAddOn()
+    local DisableAddon = C_AddOns and C_AddOns.DisableAddOn or DisableAddOn
+    
+    -- Baganator/Syndicator: Disable addon
+    if addonName == "Baganator" then
+        DisableAddon("Baganator")
+        return true, "Baganator disabled. Please /reload to apply changes."
+    end
+    
+    if addonName == "Syndicator" then
+        DisableAddon("Syndicator")
+        return true, "Syndicator disabled. Please /reload to apply changes."
+    end
+    
+    -- Bagnon: Disable addon
+    if addonName == "Bagnon" then
+        DisableAddon("Bagnon")
+        return true, "Bagnon disabled. Please /reload to apply changes."
+    end
+    
+    -- AdiBags: Disable addon
+    if addonName == "AdiBags" then
+        DisableAddon("AdiBags")
+        return true, "AdiBags disabled. Please /reload to apply changes."
+    end
+    
+    -- ArkInventory: Disable addon
+    if addonName == "ArkInventory" then
+        DisableAddon("ArkInventory")
+        return true, "ArkInventory disabled. Please /reload to apply changes."
+    end
+    
+    -- Inventorian: Disable addon
+    if addonName == "Inventorian" then
+        DisableAddon("Inventorian")
+        return true, "Inventorian disabled. Please /reload to apply changes."
+    end
+    
+    -- Combuctor: Disable addon
+    if addonName == "Combuctor" then
+        DisableAddon("Combuctor")
+        return true, "Combuctor disabled. Please /reload to apply changes."
+    end
+    
+    return false, "Unknown addon. Please disable manually."
+end
+
+--[[
+    Enable conflicting addon's bank module (when user chooses to use it)
+    @param addonName string - Name of conflicting addon
+    @return boolean success, string message
+]]
+function WarbandNexus:EnableConflictingBankModule(addonName)
+    if not addonName then
+        return false, "No addon name provided"
+    end
+    
+    -- TWW (11.0+) uses C_AddOns.EnableAddOn(), older versions use EnableAddOn()
+    local EnableAddon = C_AddOns and C_AddOns.EnableAddOn or EnableAddOn
+    
+    -- ElvUI: Enable bags module
+    if addonName:match("^ElvUI") then
+        if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
+            ElvUI[1].private.bags.enable = true
+            return true, "ElvUI Bags module enabled. Please /reload to apply changes."
+        else
+            return false, "Could not access ElvUI settings."
+        end
+    end
+    
+    -- Other addons: Enable addon
+    if addonName == "Baganator" then
+        EnableAddon("Baganator")
+        return true, "Baganator enabled."
+    end
+    
+    if addonName == "Syndicator" then
+        EnableAddon("Syndicator")
+        return true, "Syndicator enabled."
+    end
+    
+    if addonName == "Bagnon" then
+        EnableAddon("Bagnon")
+        return true, "Bagnon enabled."
+    end
+    
+    if addonName == "AdiBags" then
+        EnableAddon("AdiBags")
+        return true, "AdiBags enabled."
+    end
+    
+    if addonName == "ArkInventory" then
+        EnableAddon("ArkInventory")
+        return true, "ArkInventory enabled."
+    end
+    
+    if addonName == "Inventorian" then
+        EnableAddon("Inventorian")
+        return true, "Inventorian enabled."
+    end
+    
+    if addonName == "Combuctor" then
+        EnableAddon("Combuctor")
+        return true, "Combuctor enabled."
+    end
+    
+    return true, "Addon already enabled."
+end
+
+--[[
+    Show bank addon conflict warning popup with disable option
+    @param addonName string - Name of conflicting addon
+]]
+function WarbandNexus:QueueConflictPopup(addonName)
+    if not self._conflictQueue then
+        self._conflictQueue = {}
+    end
+    table.insert(self._conflictQueue, addonName)
+end
+
+function WarbandNexus:ShowNextConflictPopup()
+    if not self._conflictQueue then
+        self._conflictQueue = {}
+    end
+    
+    if self._isProcessingConflict or #self._conflictQueue == 0 then
+        return
+    end
+    
+    self._isProcessingConflict = true
+    local addonName = table.remove(self._conflictQueue, 1)
+    self:ShowBankAddonConflictWarning(addonName)
+end
+
+function WarbandNexus:CheckBankConflictsOnLogin()
+    -- Initialize flags
+    self._needsReload = false
+    
+    -- Safety check: Ensure db is initialized
+    if not self.db or not self.db.profile or not self.db.profile.bankConflictChoices then
+        return
+    end
+    
+    -- Detect all conflicting addons
+    local conflicts = self:DetectBankAddonConflicts()
+    
+    if not conflicts or #conflicts == 0 then
+        return -- No conflicts
+    end
+    
+    -- Filter out addons that user already made a choice for
+    local unresolvedConflicts = {}
+    for _, addonName in ipairs(conflicts) do
+        local choice = self.db.profile.bankConflictChoices[addonName]
+        if not choice then
+            table.insert(unresolvedConflicts, addonName)
+        end
+    end
+    
+    if #unresolvedConflicts == 0 then
+        return -- All conflicts already resolved
+    end
+    
+    -- Queue all unresolved conflicts
+    for _, addonName in ipairs(unresolvedConflicts) do
+        self:QueueConflictPopup(addonName)
+    end
+    
+    -- Start showing popups
+    self:ShowNextConflictPopup()
+end
+
+function WarbandNexus:ShowReloadPopup()
+    -- Create reload confirmation popup (like ElvUI does)
+    StaticPopupDialogs["WARBANDNEXUS_RELOAD_UI"] = {
+        text = "|cff00ff00Addon settings changed!|r\n\nA UI reload is required to apply changes.\n\nReload now?",
+        button1 = "Reload",
+        button2 = "Later",
+        OnAccept = function()
+            -- CRITICAL: Call ReloadUI() directly from popup button (not protected!)
+            ReloadUI()
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+    
+    StaticPopup_Show("WARBANDNEXUS_RELOAD_UI")
+end
+
+function WarbandNexus:ShowBankAddonConflictWarning(addonName)
+    -- Create or update popup dialog
+    StaticPopupDialogs["WARBANDNEXUS_BANK_CONFLICT"] = {
+        text = "",
+        button1 = "Use Warband Nexus",
+        button2 = "Use " .. addonName,
+        OnAccept = function(self)
+            -- Button 1: User wants to use Warband Nexus - disable conflicting addon
+            WarbandNexus.db.profile.bankConflictChoices[self.data] = "useWarband"
+            
+            local success, message = WarbandNexus:DisableConflictingBankModule(self.data)
+            if not success then
+                WarbandNexus:Print(message)
+            end
+            
+            -- Mark that we need reload (if addon was disabled)
+            if success then
+                WarbandNexus._needsReload = true
+                WarbandNexus:ClearConflictCache()
+            end
+            
+            WarbandNexus._isProcessingConflict = false
+            
+            -- Process next conflict OR reload if no more conflicts
+            if #WarbandNexus._conflictQueue > 0 then
+                -- More conflicts to resolve (small delay for UX)
+                C_Timer.After(0.3, function()
+                    if WarbandNexus then
+                        WarbandNexus:ShowNextConflictPopup()
+                    end
+                end)
+            elseif WarbandNexus._needsReload then
+                -- All done, show reload popup
+                WarbandNexus:ShowReloadPopup()
+            end
+        end,
+        OnCancel = function(self)
+            -- Button 2: User wants to keep the other addon
+            WarbandNexus.db.profile.bankConflictChoices[self.data] = "useOther"
+            
+            -- Enable the conflicting addon (make sure it's active)
+            local success, message = WarbandNexus:EnableConflictingBankModule(self.data)
+            if success then
+                WarbandNexus._needsReload = true
+            end
+            
+            WarbandNexus._isProcessingConflict = false
+            
+            -- Process next conflict OR finish if no more conflicts
+            if #WarbandNexus._conflictQueue > 0 then
+                -- More conflicts to resolve (small delay for UX)
+                C_Timer.After(0.3, function()
+                    if WarbandNexus then
+                        WarbandNexus:ShowNextConflictPopup()
+                    end
+                end)
+            elseif WarbandNexus._needsReload then
+                -- Some addons were enabled/disabled, show reload popup
+                WarbandNexus:ShowReloadPopup()
+            else
+                -- All done, no reload needed
+                WarbandNexus:Print("|cff00ff00All conflicts resolved! No reload needed.|r")
+            end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = false, -- Force user to choose
+        preferredIndex = 3,
+    }
+    
+    -- Set dynamic text
+    local warningText = string.format(
+        "|cffff9900Bank Addon Conflict|r\n\n" ..
+        "You have |cff00ccff%s|r installed.\n\n" ..
+        "Which addon do you want to use for bank UI?\n\n" ..
+        "|cff00ff00Use Warband Nexus:|r Disable %s automatically\n" ..
+        "|cff888888Use %s:|r WarbandNexus works in background mode\n\n" ..
+        "Characters, PvE, and Statistics tabs work regardless of choice.",
+        addonName, addonName, addonName
+    )
+    
+    StaticPopupDialogs["WARBANDNEXUS_BANK_CONFLICT"].text = warningText
+    local dialog = StaticPopup_Show("WARBANDNEXUS_BANK_CONFLICT")
+    if dialog then
+        dialog.data = addonName
+    end
+end
+
 -- Setup BankFrame hook to make it invisible (but NOT hidden - keeps API working!)
 function WarbandNexus:SetupBankFrameHook()
     if not BankFrame then return end
     if self.bankFrameHooked then return end
     
-    -- ElvUI Detection: ElvUI has its own bank management, skip suppression if detected
-    if ElvUI or IsAddOnLoaded("ElvUI") then
-        self:Print("|cffff9900[Bank Suppression]|r ElvUI detected! Bank frame suppression disabled.|r")
-        self:Print("|cff888888Use ElvUI's own bank settings to customize the bank UI.|r")
-        self.bankFrameSuppressed = false -- Don't suppress with ElvUI
+    -- Check for conflicting addons (if user chose another addon, don't suppress)
+    if self:IsUsingOtherBankAddon() then
+        -- User chose to use another addon, don't suppress bank frame
+        self.bankFrameSuppressed = false
         return
     end
     
@@ -754,9 +1167,9 @@ end
 
 -- Suppress (make invisible)
 function WarbandNexus:SuppressDefaultBankFrame()
-    -- ElvUI Detection: Skip suppression if ElvUI is active
-    if ElvUI or IsAddOnLoaded("ElvUI") then
-        return -- Let ElvUI manage the bank frame
+    -- Check user's choice about bank addon conflict
+    if self:IsUsingOtherBankAddon() then
+        return -- User chose another addon, don't suppress
     end
     
     self.bankFrameSuppressed = true
@@ -786,9 +1199,9 @@ end
 
 -- Restore (make visible again)
 function WarbandNexus:RestoreDefaultBankFrame()
-    -- ElvUI Detection: Skip restore if ElvUI is active
-    if ElvUI or IsAddOnLoaded("ElvUI") then
-        return -- Let ElvUI manage the bank frame
+    -- Check user's choice about bank addon conflict
+    if self:IsUsingOtherBankAddon() then
+        return -- User chose another addon, don't restore
     end
     
     -- Disable suppression FIRST (so OnShow hook doesn't suppress it)
@@ -919,6 +1332,16 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             WarbandNexus:SaveCharacter()
         end
     end)
+    
+    -- Check for bank addon conflicts after a delay
+    -- Wait for all addons to fully load (5 seconds after entering world)
+    if isInitialLogin or isReloadingUi then
+        C_Timer.After(5, function()
+            if WarbandNexus then
+                WarbandNexus:CheckBankConflictsOnLogin()
+            end
+        end)
+    end
 end
 
 --[[
@@ -1303,7 +1726,6 @@ function WarbandNexus:GetPetNameFromTooltip(itemID)
     
     -- Check if battlePetName field exists (TWW API)
     if tooltipData.battlePetName and tooltipData.battlePetName ~= "" then
-        print("|cff00ff00[Tooltip] battlePetName field: " .. tostring(tooltipData.battlePetName) .. "|r")
         return tooltipData.battlePetName
     end
     
@@ -1374,7 +1796,6 @@ function WarbandNexus:GetPetNameFromTooltip(itemID)
                 end
                 
                 if not isBadLine then
-                    print("|cff00ff00[Tooltip] Pet name found: " .. cleanText .. "|r")
                     return cleanText
                 end
             end
@@ -1391,7 +1812,6 @@ end
 
 function WarbandNexus:ScanWarbandBank()
     -- Implemented in Modules/Scanner.lua
-    self:Debug("ScanWarbandBank called (stub)")
 end
 
 function WarbandNexus:ToggleMainWindow()
@@ -1404,7 +1824,6 @@ end
 
 function WarbandNexus:SearchItems(searchTerm)
     -- Implemented in Modules/UI.lua
-    self:Debug("SearchItems called: " .. tostring(searchTerm))
 end
 
 function WarbandNexus:RefreshUI()
@@ -1416,9 +1835,6 @@ function WarbandNexus:RefreshPvEUI()
     if self.UI and self.UI.mainFrame then
         local mainFrame = self.UI.mainFrame
         if mainFrame:IsShown() and mainFrame.currentTab == "pve" then
-            if self.db.profile.debug then
-                self:Debug("PvE data changed - refreshing PvE UI")
-            end
             -- Instant refresh for responsive UI
             if self.RefreshUI then
                 self:RefreshUI()

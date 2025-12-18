@@ -237,29 +237,17 @@ end
 function WarbandNexus:InitializeTooltipEnhancer()
     -- TWW (11.x+): Use new TooltipDataProcessor API
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
-        print("|cff00ccff[TooltipEnhancer]|r Using TWW TooltipDataProcessor API")
-        
         -- Register for item tooltips
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
             OnTooltipSetItem(tooltip)
         end)
-        
-        self:Debug("Tooltip enhancer initialized (TWW API)")
     else
         -- Legacy (pre-11.x): Use OnTooltipSetItem hook
-        print("|cff00ccff[TooltipEnhancer]|r Using legacy OnTooltipSetItem hook")
-        
-        local success = true
-        
         -- Hook GameTooltip
         if GameTooltip and GameTooltip.HookScript then
-            local ok = pcall(function()
+            pcall(function()
                 GameTooltip:HookScript("OnTooltipSetItem", OnTooltipSetItem)
             end)
-            if not ok then
-                print("|cffff6600[TooltipEnhancer]|r WARNING: Could not hook GameTooltip")
-                success = false
-            end
         end
         
         -- Hook ItemRefTooltip (for chat links)
@@ -279,12 +267,6 @@ function WarbandNexus:InitializeTooltipEnhancer()
             pcall(function()
                 ShoppingTooltip2:HookScript("OnTooltipSetItem", OnTooltipSetItem)
             end)
-        end
-        
-        if success then
-            self:Debug("Tooltip enhancer initialized (Legacy API)")
-        else
-            print("|cffff0000[TooltipEnhancer]|r ERROR: Tooltip enhancer failed to initialize!")
         end
     end
 end

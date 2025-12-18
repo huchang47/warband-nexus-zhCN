@@ -165,26 +165,34 @@ local options = {
             desc = "Hide the default WoW bank window and use Warband Nexus instead. You can still access the classic bank using the 'Classic Bank' button.\n\n|cffff9900Note:|r If you use ElvUI or other bank addons, this setting is automatically disabled to prevent conflicts.",
             width = 1.5,
             disabled = function()
-                -- Disable if ElvUI is detected
-                return ElvUI or IsAddOnLoaded("ElvUI")
+                -- Disable if any conflicting bank addon is detected
+                return WarbandNexus:DetectBankAddonConflict() ~= nil
             end,
             get = function() return WarbandNexus.db.profile.replaceDefaultBank ~= false end,
             set = function(_, value) WarbandNexus.db.profile.replaceDefaultBank = value end,
         },
-        elvuiDetected = {
+        bankAddonConflict = {
             order = 26,
             type = "description",
             name = function()
-                if ElvUI or IsAddOnLoaded("ElvUI") then
-                    return "|cffff9900ElvUI Detected:|r Warband Nexus will not suppress the default bank frame. " ..
-                           "Use ElvUI's bank settings to customize the bank UI.\n"
+                local conflictingAddon = WarbandNexus:DetectBankAddonConflict()
+                if conflictingAddon then
+                    return string.format(
+                        "|cffff9900⚠ Bank Addon Conflict:|r\n\n" ..
+                        "You have |cff00ccff%s|r installed, which conflicts with Warband Nexus's bank replacement feature.\n\n" ..
+                        "|cffffffffTo use both addons together:|r\n" ..
+                        "• Disable %s's bank module in its settings\n" ..
+                        "• OR keep this setting OFF and use %s for your bank UI\n\n" ..
+                        "|cff00ff00Note:|r Warband Nexus will still track and cache your items regardless of this setting!\n",
+                        conflictingAddon, conflictingAddon, conflictingAddon
+                    )
                 else
                     return ""
                 end
             end,
             fontSize = "medium",
             hidden = function()
-                return not (ElvUI or IsAddOnLoaded("ElvUI"))
+                return WarbandNexus:DetectBankAddonConflict() == nil
             end,
         },
         autoOptimize = {

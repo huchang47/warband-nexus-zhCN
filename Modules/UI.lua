@@ -933,8 +933,21 @@ end
 function WarbandNexus:UpdateStatus()
     if not mainFrame then return end
 
+    -- Check if using another addon (background mode)
+    local useOtherAddon = self:IsUsingOtherBankAddon()
     local isOpen = self.bankIsOpen
-    if isOpen then
+    
+    if useOtherAddon then
+        -- Purple badge for "Background Mode" (always cached)
+        if mainFrame.statusBadge.bg then
+            mainFrame.statusBadge.bg:SetColorTexture(0.3, 0.2, 0.4, 0.25)
+        end
+        if mainFrame.statusBadge.border then
+            mainFrame.statusBadge.border:SetBackdropBorderColor(0.6, 0.4, 0.9, 0.6)
+        end
+        mainFrame.statusText:SetText("CACHED")
+        mainFrame.statusText:SetTextColor(0.8, 0.7, 0.9)
+    elseif isOpen then
         -- Green badge for "Bank On" (rounded style)
         if mainFrame.statusBadge.bg then
             mainFrame.statusBadge.bg:SetColorTexture(0.15, 0.6, 0.25, 0.25)
@@ -1063,6 +1076,11 @@ function WarbandNexus:SyncBankTab()
     if not self.bankIsOpen then 
         -- Silently skip if bank not open (don't spam logs)
         return 
+    end
+    
+    -- Don't sync classic UI tabs if user chose to use another addon
+    if self:IsUsingOtherBankAddon() then
+        return
     end
 
     local status, err = pcall(function()

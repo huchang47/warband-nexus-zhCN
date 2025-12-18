@@ -138,11 +138,6 @@ function WarbandNexus:LogError(message, context, stack)
             table.remove(errorLog, 1)
         end
     end
-    
-    -- Debug output
-    if self.db and self.db.profile and self.db.profile.debug then
-        print(string.format("|cffff0000[WarbandNexus Error]|r %s: %s", context or "Unknown", message))
-    end
 end
 
 --[[
