@@ -567,7 +567,7 @@ function WarbandNexus:CacheBagContents()
 end
 
 ---Handle BAG_UPDATE_DELAYED for collectible detection (Rarity-style)
----Detects when mounts/toys are added to bags (before being learned)
+---Detects when mounts/pets/toys are added to bags (before being learned)
 function WarbandNexus:OnBagUpdateForCollectibles()
     if not self.db or not self.db.profile or not self.db.profile.notifications then
         return
@@ -577,37 +577,49 @@ function WarbandNexus:OnBagUpdateForCollectibles()
         return
     end
     
+    -- Initialize cache if needed
+    if not self.lastBagContents then
+        self.lastBagContents = {}
+        self:CacheBagContents()
+        return -- First call, just build cache
+    end
+    
     -- Check all bags for NEW items
     local newItemsFound = 0
     for bag = 0, 4 do
         local numSlots = C_Container.GetContainerNumSlots(bag)
-        for slot = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
-            if itemInfo and itemInfo.itemID then
-                local key = bag .. "_" .. slot
-                local itemID = itemInfo.itemID
-                
-                -- Check if this is a NEW item (not in cache)
-                if not self.lastBagContents[key] or self.lastBagContents[key] ~= itemID then
-                    newItemsFound = newItemsFound + 1
+        if numSlots then
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
+                if itemInfo and itemInfo.itemID then
+                    local key = bag .. "_" .. slot
+                    local itemID = itemInfo.itemID
                     
-                    -- New item detected! Check if it's a collectible
-                    self:CheckNewCollectible(itemID)
-                    
-                    -- Update cache
-                    self.lastBagContents[key] = itemID
+                    -- Check if this is a NEW item (not in cache OR different item in same slot)
+                    if not self.lastBagContents[key] or self.lastBagContents[key] ~= itemID then
+                        newItemsFound = newItemsFound + 1
+                        
+                        -- New item detected! Pass hyperlink for pet detection
+                        -- itemInfo.hyperlink contains the full battle pet link
+                        self:CheckNewCollectible(itemID, itemInfo.hyperlink)
+                        
+                        -- Update cache
+                        self.lastBagContents[key] = itemID
+                    end
+                else
+                    -- Slot is empty, remove from cache
+                    local key = bag .. "_" .. slot
+                    self.lastBagContents[key] = nil
                 end
-            else
-                -- Slot is empty, remove from cache
-                local key = bag .. "_" .. slot
-                self.lastBagContents[key] = nil
             end
         end
     end
 end
 
 ---Check if a new item is a mount/pet/toy and show notification
-function WarbandNexus:CheckNewCollectible(itemID)
+---@param itemID number The item ID
+---@param containerHyperlink string|nil Optional hyperlink from container (for battle pets)
+function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
     if not itemID then return end
     
     -- Force load item data (for icon/name cache)
@@ -616,6 +628,11 @@ function WarbandNexus:CheckNewCollectible(itemID)
     -- Get item info for classification
     local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
           itemStackCount, itemEquipLoc, iconFileDataID, sellPrice, classID, subclassID = GetItemInfo(itemID)
+    
+    -- Use container hyperlink if available (better for battle pets)
+    if containerHyperlink then
+        itemLink = containerHyperlink
+    end
     
     -- ========================================
     -- 1. MOUNT DETECTION (Most reliable)
@@ -627,8 +644,9 @@ function WarbandNexus:CheckNewCollectible(itemID)
             local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, 
                   isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
             
-            -- Only show if NOT collected
-            if name and not isCollected then
+            -- ALWAYS show toast for bag items (don't check collection status)
+            -- User just got this item in their bag, show notification
+            if name then
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. name .. "]|r")
@@ -644,7 +662,7 @@ function WarbandNexus:CheckNewCollectible(itemID)
     -- 2. PET DETECTION (classID 17 = Companion Pets)
     -- ========================================
     if classID == 17 then
-        -- Try to get speciesID (works in some TWW versions)
+        -- Try to get speciesID from item
         local speciesID = nil
         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
             local result = C_PetJournal.GetPetInfoByItemID(itemID)
@@ -656,10 +674,9 @@ function WarbandNexus:CheckNewCollectible(itemID)
         if speciesID then
             -- SUCCESS: We have speciesID, use Pet Journal API (most reliable)
             local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            local numCollected, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
             
-            -- Only show if NOT collected
-            if speciesName and numCollected == 0 then
+            -- ALWAYS show toast for bag items (don't check collection status)
+            if speciesName then
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
@@ -668,36 +685,61 @@ function WarbandNexus:CheckNewCollectible(itemID)
                 end)
             end
         else
-            -- FALLBACK: Can't get speciesID (TWW API issue)
-            -- Try battlePetName field first, then tooltip parsing, then accept "Pet Cage"
-            C_Item.RequestLoadItemDataByID(itemID)
+            -- TWW: Try to extract pet info from hyperlink (for caged pets)
+            -- Format: |cfffe6cc00|Hbattlepet:speciesID:level:quality:...|h[Pet Name]|h|r
+            local extractedSpeciesID, extractedPetName = nil, nil
             
-            -- Wait for tooltip cache to load (0.5s for TWW cache loading)
-            C_Timer.After(0.5, function()
-                local freshItemName, freshItemLink, _, _, _, _, _, _, _, freshIcon = GetItemInfo(itemID)
+            if itemLink then
+                -- Extract speciesID from hyperlink
+                extractedSpeciesID = tonumber(itemLink:match("|Hbattlepet:(%d+):"))
+                -- Extract pet name from [Pet Name]
+                extractedPetName = itemLink:match("%[(.-)%]")
+            end
+            
+            if extractedSpeciesID and extractedPetName then
+                -- We got both speciesID and name from hyperlink!
+                local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(extractedSpeciesID)
                 
-                -- Try Core.lua's GetPetNameFromTooltip (includes battlePetName check + line parsing)
-                local tooltipPetName = nil
-                if WarbandNexus.GetPetNameFromTooltip then
-                    tooltipPetName = WarbandNexus:GetPetNameFromTooltip(itemID)
+                if speciesName then
+                    C_Timer.After(0.15, function()
+                        local freshItemName, freshItemLink = GetItemInfo(itemID)
+                        local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
+                        
+                        self:ShowLootNotification(extractedSpeciesID, displayLink, speciesName, "Pet", speciesIcon)
+                    end)
                 end
+            else
+                -- FALLBACK: Can't extract from hyperlink either
+                -- Try tooltip parsing as last resort
+                C_Item.RequestLoadItemDataByID(itemID)
                 
-                -- If tooltip parsing succeeded, use actual pet name
-                if tooltipPetName and tooltipPetName ~= "" then
-                    local displayName = tooltipPetName
-                    local displayIcon = freshIcon or iconFileDataID or "Interface\\Icons\\INV_Pet_BabyBlizzardBear"
-                    local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
+                -- Wait for tooltip cache to load (0.5s for TWW cache loading)
+                C_Timer.After(0.5, function()
+                    local freshItemName, freshItemLink, _, _, _, _, _, _, _, freshIcon = GetItemInfo(itemID)
                     
-                    self:ShowLootNotification(itemID, displayLink, displayName, "Pet", displayIcon)
-                else
-                    -- Tooltip parsing failed, use generic "Pet Cage" (acceptable)
-                    local displayName = freshItemName or itemName or "Pet Cage"
-                    local displayIcon = freshIcon or iconFileDataID or 132599 -- Generic cage icon
-                    local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
+                    -- Try Core.lua's GetPetNameFromTooltip (includes battlePetName check + line parsing)
+                    local tooltipPetName = nil
+                    if WarbandNexus.GetPetNameFromTooltip then
+                        tooltipPetName = WarbandNexus:GetPetNameFromTooltip(itemID)
+                    end
                     
-                    self:ShowLootNotification(itemID, displayLink, displayName, "Pet", displayIcon)
-                end
-            end)
+                    -- If tooltip parsing succeeded, use actual pet name
+                    if tooltipPetName and tooltipPetName ~= "" then
+                        local displayName = tooltipPetName
+                        local displayIcon = freshIcon or iconFileDataID or "Interface\\Icons\\INV_Pet_BabyBlizzardBear"
+                        local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
+                        
+                        self:ShowLootNotification(itemID, displayLink, displayName, "Pet", displayIcon)
+                    else
+                        -- All methods failed, use generic "Pet Cage"
+                        local displayName = freshItemName or itemName or "Pet Cage"
+                        local displayIcon = freshIcon or iconFileDataID or 132599 -- Generic cage icon
+                        local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
+                        
+                        self:ShowLootNotification(itemID, displayLink, displayName, "Pet", displayIcon)
+                    end
+                end)
+            end
         end
         return
     end
@@ -705,24 +747,21 @@ function WarbandNexus:CheckNewCollectible(itemID)
     -- ========================================
     -- 3. TOY DETECTION
     -- ========================================
-    if C_ToyBox and C_ToyBox.GetToyInfo and PlayerHasToy then
+    if C_ToyBox and C_ToyBox.GetToyInfo then
         local toyName = C_ToyBox.GetToyInfo(itemID)
         if toyName then
-            local hasToy = PlayerHasToy(itemID)
-            
-            -- Only show if NOT collected
-            if not hasToy then
-                -- Use GetItemInfo for reliable name/icon (C_ToyBox.GetToyInfo sometimes returns itemID as string)
-                C_Timer.After(0.15, function()
-                    local freshItemName, freshItemLink, _, _, _, _, _, _, _, freshIcon = GetItemInfo(itemID)
-                    
-                    local displayName = freshItemName or itemName or toyName
-                    local displayIcon = freshIcon or iconFileDataID or "Interface\\Icons\\INV_Misc_Toy_01"
-                    local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
-                    
-                    self:ShowLootNotification(itemID, displayLink, displayName, "Toy", displayIcon)
-                end)
-            end
+            -- ALWAYS show toast for bag items (don't check collection status)
+            -- User just got this item in their bag, show notification
+            -- Use GetItemInfo for reliable name/icon (C_ToyBox.GetToyInfo sometimes returns itemID as string)
+            C_Timer.After(0.15, function()
+                local freshItemName, freshItemLink, _, _, _, _, _, _, _, freshIcon = GetItemInfo(itemID)
+                
+                local displayName = freshItemName or itemName or toyName
+                local displayIcon = freshIcon or iconFileDataID or "Interface\\Icons\\INV_Misc_Toy_01"
+                local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. displayName .. "]|r")
+                
+                self:ShowLootNotification(itemID, displayLink, displayName, "Toy", displayIcon)
+            end)
             return
         end
     end

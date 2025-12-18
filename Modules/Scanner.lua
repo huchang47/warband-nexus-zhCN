@@ -65,14 +65,36 @@ function WarbandNexus:ScanWarbandBank()
                 local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, 
                       _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
                 
+                -- Special handling for Battle Pets (classID 17)
+                -- Extract pet name from hyperlink: |Hbattlepet:speciesID:...|h[Pet Name]|h|r
+                local displayName = itemName
+                local displayIcon = itemInfo.iconFileID or itemTexture
+                
+                if classID == 17 and itemInfo.hyperlink then
+                    -- Try to extract pet name from hyperlink
+                    local petName = itemInfo.hyperlink:match("%[(.-)%]")
+                    if petName and petName ~= "" and petName ~= "Pet Cage" then
+                        displayName = petName
+                        
+                        -- Try to get actual pet icon from speciesID
+                        local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                        if speciesID and C_PetJournal then
+                            local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                            if petIcon then
+                                displayIcon = petIcon
+                            end
+                        end
+                    end
+                end
+                
                 self.db.global.warbandBank.items[tabIndex][slotID] = {
                     itemID = itemInfo.itemID,
                     itemLink = itemInfo.hyperlink,
                     stackCount = itemInfo.stackCount or 1,
                     quality = itemInfo.quality or itemQuality or 0,
-                    iconFileID = itemInfo.iconFileID or itemTexture,
+                    iconFileID = displayIcon,
                     -- Extended info
-                    name = itemName,
+                    name = displayName,
                     itemLevel = itemLevel,
                     itemType = itemType,
                     itemSubType = itemSubType,
@@ -169,13 +191,35 @@ function WarbandNexus:ScanPersonalBank()
                 local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
                       _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
                 
+                -- Special handling for Battle Pets (classID 17)
+                -- Extract pet name from hyperlink: |Hbattlepet:speciesID:...|h[Pet Name]|h|r
+                local displayName = itemName
+                local displayIcon = itemInfo.iconFileID or itemTexture
+                
+                if classID == 17 and itemInfo.hyperlink then
+                    -- Try to extract pet name from hyperlink
+                    local petName = itemInfo.hyperlink:match("%[(.-)%]")
+                    if petName and petName ~= "" and petName ~= "Pet Cage" then
+                        displayName = petName
+                        
+                        -- Try to get actual pet icon from speciesID
+                        local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                        if speciesID and C_PetJournal then
+                            local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                            if petIcon then
+                                displayIcon = petIcon
+                            end
+                        end
+                    end
+                end
+                
                 self.db.char.personalBank.items[bagIndex][slotID] = {
                     itemID = itemInfo.itemID,
                     itemLink = itemInfo.hyperlink,
                     stackCount = itemInfo.stackCount or 1,
                     quality = itemInfo.quality or itemQuality or 0,
-                    iconFileID = itemInfo.iconFileID or itemTexture,
-                    name = itemName,
+                    iconFileID = displayIcon,
+                    name = displayName,
                     itemLevel = itemLevel,
                     itemType = itemType,
                     itemSubType = itemSubType,
