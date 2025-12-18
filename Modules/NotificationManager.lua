@@ -553,14 +553,22 @@ end
 ---Cache current bag contents for comparison
 function WarbandNexus:CacheBagContents()
     self.lastBagContents = {}
-    
+
     for bag = 0, 4 do -- Player bags only (0-4)
         local numSlots = C_Container.GetContainerNumSlots(bag)
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
             if itemInfo and itemInfo.itemID then
-                local key = bag .. "_" .. slot
-                self.lastBagContents[key] = itemInfo.itemID
+                local itemID = itemInfo.itemID
+                
+                -- Track itemID (not slot)
+                if not self.lastBagContents[itemID] then
+                    self.lastBagContents[itemID] = {
+                        hyperlink = itemInfo.hyperlink,
+                        count = 0
+                    }
+                end
+                self.lastBagContents[itemID].count = self.lastBagContents[itemID].count + 1
             end
         end
     end
@@ -572,48 +580,51 @@ function WarbandNexus:OnBagUpdateForCollectibles()
     if not self.db or not self.db.profile or not self.db.profile.notifications then
         return
     end
-    
+
     if not self.db.profile.notifications.showLootNotifications then
         return
     end
-    
+
     -- Initialize cache if needed
     if not self.lastBagContents then
         self.lastBagContents = {}
         self:CacheBagContents()
         return -- First call, just build cache
     end
-    
-    -- Check all bags for NEW items
-    local newItemsFound = 0
+
+    -- Build current bag snapshot (itemID set, not slot-based)
+    local currentItems = {}
     for bag = 0, 4 do
         local numSlots = C_Container.GetContainerNumSlots(bag)
         if numSlots then
             for slot = 1, numSlots do
                 local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
                 if itemInfo and itemInfo.itemID then
-                    local key = bag .. "_" .. slot
                     local itemID = itemInfo.itemID
                     
-                    -- Check if this is a NEW item (not in cache OR different item in same slot)
-                    if not self.lastBagContents[key] or self.lastBagContents[key] ~= itemID then
-                        newItemsFound = newItemsFound + 1
-                        
-                        -- New item detected! Pass hyperlink for pet detection
-                        -- itemInfo.hyperlink contains the full battle pet link
-                        self:CheckNewCollectible(itemID, itemInfo.hyperlink)
-                        
-                        -- Update cache
-                        self.lastBagContents[key] = itemID
+                    -- Track this itemID (not slot-specific)
+                    if not currentItems[itemID] then
+                        currentItems[itemID] = {
+                            hyperlink = itemInfo.hyperlink,
+                            count = 0
+                        }
                     end
-                else
-                    -- Slot is empty, remove from cache
-                    local key = bag .. "_" .. slot
-                    self.lastBagContents[key] = nil
+                    currentItems[itemID].count = currentItems[itemID].count + 1
                 end
             end
         end
     end
+    
+    -- Check for NEW items (itemID that wasn't in previous snapshot)
+    for itemID, data in pairs(currentItems) do
+        if not self.lastBagContents[itemID] then
+            -- This is a truly NEW item (first time seeing this itemID in bags)
+            self:CheckNewCollectible(itemID, data.hyperlink)
+        end
+    end
+    
+    -- Update cache with current snapshot
+    self.lastBagContents = currentItems
 end
 
 ---Check if a new item is a mount/pet/toy and show notification
