@@ -53,7 +53,7 @@ local options = {
                 if WarbandNexus.SetMinimapButtonVisible then
                     WarbandNexus:SetMinimapButtonVisible(value)
                 else
-                    WarbandNexus.db.profile.minimap.hide = not value
+                WarbandNexus.db.profile.minimap.hide = not value
                 end
             end,
         },
@@ -162,13 +162,33 @@ local options = {
             order = 25,
             type = "toggle",
             name = "Replace Default Bank",
-            desc = "Hide the default WoW bank window and use Warband Nexus instead. You can still access the classic bank using the 'Classic Bank' button.",
+            desc = "Hide the default WoW bank window and use Warband Nexus instead. You can still access the classic bank using the 'Classic Bank' button.\n\n|cffff9900Note:|r If you use ElvUI or other bank addons, this setting is automatically disabled to prevent conflicts.",
             width = 1.5,
+            disabled = function()
+                -- Disable if ElvUI is detected
+                return ElvUI or IsAddOnLoaded("ElvUI")
+            end,
             get = function() return WarbandNexus.db.profile.replaceDefaultBank ~= false end,
             set = function(_, value) WarbandNexus.db.profile.replaceDefaultBank = value end,
         },
-        autoOptimize = {
+        elvuiDetected = {
             order = 26,
+            type = "description",
+            name = function()
+                if ElvUI or IsAddOnLoaded("ElvUI") then
+                    return "|cffff9900ElvUI Detected:|r Warband Nexus will not suppress the default bank frame. " ..
+                           "Use ElvUI's bank settings to customize the bank UI.\n"
+                else
+                    return ""
+                end
+            end,
+            fontSize = "medium",
+            hidden = function()
+                return not (ElvUI or IsAddOnLoaded("ElvUI"))
+            end,
+        },
+        autoOptimize = {
+            order = 27,
             type = "toggle",
             name = "Auto-Optimize Database",
             desc = "Automatically clean up stale data and optimize the database every 7 days.",

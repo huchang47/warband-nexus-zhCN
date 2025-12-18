@@ -5,6 +5,29 @@ All notable changes to Warband Nexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2024-12-16
+
+### Fixed
+- **Critical**: Fixed folder structure in release ZIP that prevented the addon from loading when manually installed
+  - Release ZIP now contains addon files directly at root level (correct: `WarbandNexus.toc`, not `WarbandNexus-1.0.0/WarbandNexus.toc`)
+  - Manual installation from GitHub Releases now works correctly
+  - Users who installed v1.0.0 manually should delete the old folder and reinstall v1.0.1
+
+### Added
+- **ElvUI Compatibility**: Automatic detection and compatibility with ElvUI
+  - Bank frame suppression is automatically disabled when ElvUI is detected
+  - "Replace Default Bank" setting is disabled with a warning message when ElvUI is active
+  - Prevents conflicts between ElvUI's bank UI and Warband Nexus
+- **Enhanced Debug Logging**: Comprehensive debug logging for loot notification system
+  - Added detailed event firing logs for `BAG_UPDATE_DELAYED`
+  - Item detection logs show classID, subclassID, and collection status
+  - Mount/Pet/Toy detection logs for troubleshooting
+  - Enable via `/wn config` → General → Debug Mode
+
+### Notes
+- CurseForge/WoWUp/Wago users are not affected by the v1.0.0 installation issue (packager handles folder structure correctly)
+- If you manually installed v1.0.0 and the addon wasn't loading, delete `Interface\AddOns\WarbandNexus-1.0.0` and install v1.0.1
+
 ## [1.0.0] - 2024-12-16
 
 ### 🎉 Initial Release

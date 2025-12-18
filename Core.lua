@@ -53,7 +53,7 @@ for i = 1, NUM_BANKBAGSLOTS or 7 do
     if bagEnum then
         -- Skip bag 12 - it's now Warband's first tab in TWW!
         if bagEnum ~= 12 and bagEnum ~= Enum.BagIndex.AccountBankTab_1 then
-            table.insert(PERSONAL_BANK_BAGS, bagEnum)
+        table.insert(PERSONAL_BANK_BAGS, bagEnum)
         end
     end
 end
@@ -102,7 +102,7 @@ local defaults = {
             minimapPos = 220,
             lock = false,
         },
-
+        
         -- Behavior settings
         autoScan = true,           -- Auto-scan when bank opens
         autoOpenWindow = true,     -- Auto-open addon window when bank opens
@@ -678,8 +678,8 @@ function WarbandNexus:OnBankOpened()
     end
     
     -- Open player bags (DON'T suppress here - already done in OnEnable)
-    if OpenAllBags then
-        OpenAllBags()
+        if OpenAllBags then
+            OpenAllBags()
     end
     
     -- Delayed operations for Warband bank
@@ -717,6 +717,14 @@ function WarbandNexus:SetupBankFrameHook()
     if not BankFrame then return end
     if self.bankFrameHooked then return end
     
+    -- ElvUI Detection: ElvUI has its own bank management, skip suppression if detected
+    if ElvUI or IsAddOnLoaded("ElvUI") then
+        self:Print("|cffff9900[Bank Suppression]|r ElvUI detected! Bank frame suppression disabled.|r")
+        self:Print("|cff888888Use ElvUI's own bank settings to customize the bank UI.|r")
+        self.bankFrameSuppressed = false -- Don't suppress with ElvUI
+        return
+    end
+    
     -- Hook OnShow event
     -- This fires EVERY TIME WoW tries to show the BankFrame
     BankFrame:HookScript("OnShow", function(frame)
@@ -746,8 +754,13 @@ end
 
 -- Suppress (make invisible)
 function WarbandNexus:SuppressDefaultBankFrame()
-    self.bankFrameSuppressed = true
+    -- ElvUI Detection: Skip suppression if ElvUI is active
+    if ElvUI or IsAddOnLoaded("ElvUI") then
+        return -- Let ElvUI manage the bank frame
+    end
     
+    self.bankFrameSuppressed = true
+
     if BankFrame and BankFrame:IsShown() then
         -- DON'T Hide()! Just make invisible
         BankFrame:SetAlpha(0)
@@ -755,14 +768,32 @@ function WarbandNexus:SuppressDefaultBankFrame()
         BankFrame:SetScale(0.001)
         BankFrame:ClearAllPoints()
         BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+        
+        -- Recursive mouse disable
+        local function DisableMouseRecursive(f)
+            if not f then return end
+            if f.EnableMouse then f:EnableMouse(false) end
+            if f.SetMouseClickEnabled then f:SetMouseClickEnabled(false) end
+            if f.SetMouseMotionEnabled then f:SetMouseMotionEnabled(false) end
+            local children = {f:GetChildren()}
+            for _, child in ipairs(children) do
+                DisableMouseRecursive(child)
+            end
+        end
+        DisableMouseRecursive(BankFrame)
     end
 end
 
 -- Restore (make visible again)
 function WarbandNexus:RestoreDefaultBankFrame()
+    -- ElvUI Detection: Skip restore if ElvUI is active
+    if ElvUI or IsAddOnLoaded("ElvUI") then
+        return -- Let ElvUI manage the bank frame
+    end
+    
     -- Disable suppression FIRST (so OnShow hook doesn't suppress it)
     self.bankFrameSuppressed = false
-    
+
     if BankFrame then
         -- Restore visibility
         BankFrame:SetAlpha(1)
@@ -771,6 +802,19 @@ function WarbandNexus:RestoreDefaultBankFrame()
         BankFrame:ClearAllPoints()
         BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
         
+        -- Recursive mouse enable
+        local function EnableMouseRecursive(f)
+            if not f then return end
+            if f.EnableMouse then f:EnableMouse(true) end
+            if f.SetMouseClickEnabled then f:SetMouseClickEnabled(true) end
+            if f.SetMouseMotionEnabled then f:SetMouseMotionEnabled(true) end
+            local children = {f:GetChildren()}
+            for _, child in ipairs(children) do
+                EnableMouseRecursive(child)
+            end
+        end
+        EnableMouseRecursive(BankFrame)
+
         -- Ensure it's shown
         BankFrame:Show()
     end
@@ -804,18 +848,18 @@ function WarbandNexus:OnBankClosed()
         self:SuppressDefaultBankFrame()
     else
         -- Normal bank close (addon was already visible)
-        -- Show warning if addon window is open
-        if self:IsMainWindowShown() then
-            -- Refresh title/status immediately
-            if self.UpdateStatus then
-                 self:UpdateStatus()
-            end
-            self:Print("|cffff9900Bank connection lost. Showing cached data.|r")
+    -- Show warning if addon window is open
+    if self:IsMainWindowShown() then
+        -- Refresh title/status immediately
+        if self.UpdateStatus then
+             self:UpdateStatus()
         end
-        
-        -- Refresh UI if open (to update buttons/status)
-        if self.RefreshUI then
-            self:RefreshUI()
+        self:Print("|cffff9900Bank connection lost. Showing cached data.|r")
+    end
+    
+    -- Refresh UI if open (to update buttons/status)
+    if self.RefreshUI then
+        self:RefreshUI()
         end
     end
 end
@@ -868,7 +912,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             self:CheckNotificationsOnLogin()
         end
     end
-
+    
     -- Single save attempt after 2 seconds (enough for character data to load)
     C_Timer.After(2, function()
         if WarbandNexus then
@@ -1606,12 +1650,12 @@ function WarbandNexus:IsFavoriteCharacter(characterKey)
     for _, favKey in ipairs(self.db.global.favoriteCharacters) do
         if favKey == characterKey then
             return true
-        end
-    end
+                    end
+                end
     
     return false
-end
-
+    end
+    
 ---Toggle favorite status for a character
 ---@param characterKey string Character key ("Name-Realm")
 ---@return boolean New favorite status
@@ -1634,18 +1678,18 @@ function WarbandNexus:ToggleFavoriteCharacter(characterKey)
             if favKey == characterKey then
                 table.remove(favorites, i)
                 self:Print("|cffffff00Removed from favorites:|r " .. characterKey)
-                break
-            end
-        end
+                                break
+                            end
+                        end
         return false
     else
         -- Add to favorites
         table.insert(favorites, characterKey)
         self:Print("|cffffd700Added to favorites:|r " .. characterKey)
         return true
+        end
     end
-end
-
+    
 ---Get all favorite characters
 ---@return table Array of favorite character keys
 function WarbandNexus:GetFavoriteCharacters()

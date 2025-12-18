@@ -577,8 +577,34 @@ function WarbandNexus:InitializeLootNotifications()
     self.lastBagContents = {}
     self:CacheBagContents()
     
+    -- Check settings
+    local notifEnabled = self.db and self.db.profile and self.db.profile.notifications and self.db.profile.notifications.showLootNotifications
+    
     self:Print("|cff00ff00[Loot Notifications] Initialized! (Rarity-style bag detection - 0.2s throttle)|r")
     self:Print("|cff888888Type /wn testloot to test mount/pet/toy notifications.|r")
+    
+    if notifEnabled then
+        self:Print("|cff00ff00[Loot Notifications] Status: ENABLED ✓|r")
+    else
+        self:Print("|cffff6600[Loot Notifications] Status: DISABLED! Enable in /wn config → Notifications|r")
+    end
+    
+    -- DEBUG: Settings check
+    if self.db and self.db.profile and self.db.profile.debug then
+        print("|cff00ccff[Loot Debug]|r Event registered: BAG_UPDATE_DELAYED")
+        print("|cff00ccff[Loot Debug]|r Bag cache initialized with " .. self:CountTableKeys(self.lastBagContents) .. " items")
+        print("|cff00ccff[Loot Debug]|r Setting showLootNotifications: " .. tostring(notifEnabled))
+    end
+end
+
+---Count keys in a table (helper for debug)
+function WarbandNexus:CountTableKeys(tbl)
+    if not tbl then return 0 end
+    local count = 0
+    for _ in pairs(tbl) do
+        count = count + 1
+    end
+    return count
 end
 
 ---Cache current bag contents for comparison
@@ -600,15 +626,27 @@ end
 ---Handle BAG_UPDATE_DELAYED for collectible detection (Rarity-style)
 ---Detects when mounts/toys are added to bags (before being learned)
 function WarbandNexus:OnBagUpdateForCollectibles()
+    -- DEBUG: Event firing check
+    if self.db and self.db.profile and self.db.profile.debug then
+        print("|cff00ccff[Loot Debug]|r BAG_UPDATE_DELAYED fired!")
+    end
+    
     if not self.db or not self.db.profile or not self.db.profile.notifications then
+        if self.db and self.db.profile and self.db.profile.debug then
+            print("|cffff0000[Loot Debug]|r DB/profile not ready!")
+        end
         return
     end
     
     if not self.db.profile.notifications.showLootNotifications then
+        if self.db.profile.debug then
+            print("|cffff6600[Loot Debug]|r Loot notifications DISABLED in settings!")
+        end
         return
     end
     
     -- Check all bags for NEW items
+    local newItemsFound = 0
     for bag = 0, 4 do
         local numSlots = C_Container.GetContainerNumSlots(bag)
         for slot = 1, numSlots do
@@ -619,6 +657,14 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                 
                 -- Check if this is a NEW item (not in cache)
                 if not self.lastBagContents[key] or self.lastBagContents[key] ~= itemID then
+                    newItemsFound = newItemsFound + 1
+                    
+                    -- DEBUG: New item detection
+                    if self.db.profile.debug then
+                        local name = GetItemInfo(itemID) or "Unknown"
+                        print("|cff00ff00[Loot Debug]|r NEW ITEM: " .. name .. " (ID: " .. itemID .. ") in bag " .. bag .. " slot " .. slot)
+                    end
+                    
                     -- New item detected! Check if it's a collectible
                     self:CheckNewCollectible(itemID)
                     
@@ -631,6 +677,11 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                 self.lastBagContents[key] = nil
             end
         end
+    end
+    
+    -- DEBUG: Summary
+    if self.db.profile.debug and newItemsFound > 0 then
+        print("|cff00ccff[Loot Debug]|r Found " .. newItemsFound .. " new items this scan.")
     end
 end
 
@@ -645,6 +696,11 @@ function WarbandNexus:CheckNewCollectible(itemID)
     local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
           itemStackCount, itemEquipLoc, iconFileDataID, sellPrice, classID, subclassID = GetItemInfo(itemID)
     
+    -- DEBUG: Item classification
+    if self.db and self.db.profile and self.db.profile.debug then
+        print("|cff00ccff[Collectible Check]|r Item: " .. (itemName or "Unknown") .. " | ClassID: " .. (classID or "nil") .. " | SubClass: " .. (subclassID or "nil"))
+    end
+    
     -- ========================================
     -- 1. MOUNT DETECTION (Most reliable)
     -- ========================================
@@ -655,14 +711,25 @@ function WarbandNexus:CheckNewCollectible(itemID)
             local name, spellID, icon, isActive, isUsable, sourceType, isFavorite, 
                   isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
             
+            -- DEBUG: Mount detection
+            if self.db.profile.debug then
+                print("|cff9966ff[Mount]|r " .. (name or "Unknown") .. " | Collected: " .. tostring(isCollected))
+            end
+            
             -- Only show if NOT collected
             if name and not isCollected then
+                if self.db.profile.debug then
+                    print("|cff00ff00[Mount]|r Showing notification for UNCOLLECTED mount: " .. name)
+                end
+                
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. name .. "]|r")
                     
                     self:ShowLootNotification(mountID, displayLink, name, "Mount", icon)
                 end)
+            elseif self.db.profile.debug and isCollected then
+                print("|cff888888[Mount]|r Skipping (already collected): " .. (name or "Unknown"))
             end
             return
         end
@@ -672,12 +739,22 @@ function WarbandNexus:CheckNewCollectible(itemID)
     -- 2. PET DETECTION (classID 17 = Companion Pets)
     -- ========================================
     if classID == 17 then
+        -- DEBUG: Pet item detected
+        if self.db.profile.debug then
+            print("|cff00ccff[Pet]|r Pet item detected (classID 17): " .. (itemName or "Unknown"))
+        end
+        
         -- Try to get speciesID (works in some TWW versions)
         local speciesID = nil
         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
             local result = C_PetJournal.GetPetInfoByItemID(itemID)
             if type(result) == "number" then
                 speciesID = result
+                if self.db.profile.debug then
+                    print("|cff00ccff[Pet]|r SpeciesID found: " .. speciesID)
+                end
+            elseif self.db.profile.debug then
+                print("|cffff6600[Pet]|r GetPetInfoByItemID returned: " .. type(result) .. " (not speciesID)")
             end
         end
         
@@ -686,14 +763,25 @@ function WarbandNexus:CheckNewCollectible(itemID)
             local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
             local numCollected, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
             
+            -- DEBUG: Collection status
+            if self.db.profile.debug then
+                print("|cff9966ff[Pet]|r " .. (speciesName or "Unknown") .. " | Collected: " .. numCollected .. "/" .. limit)
+            end
+            
             -- Only show if NOT collected
             if speciesName and numCollected == 0 then
+                if self.db.profile.debug then
+                    print("|cff00ff00[Pet]|r Showing notification for UNCOLLECTED pet: " .. speciesName)
+                end
+                
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
                     
                     self:ShowLootNotification(speciesID, displayLink, speciesName, "Pet", speciesIcon)
                 end)
+            elseif self.db.profile.debug and numCollected > 0 then
+                print("|cff888888[Pet]|r Skipping (already collected " .. numCollected .. "x): " .. (speciesName or "Unknown"))
             end
         else
             -- FALLBACK: Can't get speciesID (TWW API issue)
@@ -736,8 +824,19 @@ function WarbandNexus:CheckNewCollectible(itemID)
     if C_ToyBox and C_ToyBox.GetToyInfo and PlayerHasToy then
         local toyName = C_ToyBox.GetToyInfo(itemID)
         if toyName then
+            local hasToy = PlayerHasToy(itemID)
+            
+            -- DEBUG: Toy detection
+            if self.db.profile.debug then
+                print("|cff9966ff[Toy]|r " .. (toyName or "Unknown") .. " | Has: " .. tostring(hasToy))
+            end
+            
             -- Only show if NOT collected
-            if not PlayerHasToy(itemID) then
+            if not hasToy then
+                if self.db.profile.debug then
+                    print("|cff00ff00[Toy]|r Showing notification for UNCOLLECTED toy: " .. toyName)
+                end
+                
                 -- Use GetItemInfo for reliable name/icon (C_ToyBox.GetToyInfo sometimes returns itemID as string)
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink, _, _, _, _, _, _, _, freshIcon = GetItemInfo(itemID)
@@ -748,6 +847,8 @@ function WarbandNexus:CheckNewCollectible(itemID)
                     
                     self:ShowLootNotification(itemID, displayLink, displayName, "Toy", displayIcon)
                 end)
+            elseif self.db.profile.debug and hasToy then
+                print("|cff888888[Toy]|r Skipping (already collected): " .. (toyName or "Unknown"))
             end
             return
         end
@@ -856,4 +957,8 @@ function WarbandNexus:TestVaultCheck()
     
     self:Print("|cff00ccff======================|r")
 end
+
+
+
+
 

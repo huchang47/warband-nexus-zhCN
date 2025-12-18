@@ -52,3 +52,7 @@ This folder contains screenshots for CurseForge/Wago listing.
 2. Upload screenshots
 3. Set primary screenshot (first one shown)
 4. Add captions to each image
+
+
+
+
