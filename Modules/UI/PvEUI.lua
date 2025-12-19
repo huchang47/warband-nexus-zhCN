@@ -269,10 +269,13 @@ function WarbandNexus:DrawPvEProgress(parent)
         local favIcon = favButton:CreateTexture(nil, "ARTWORK")
         favIcon:SetAllPoints()
         if isFavorite then
-            favIcon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")  -- Filled star
+            -- Filled gold star (same texture, just colored)
+            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
+            favIcon:SetDesaturated(false)
             favIcon:SetVertexColor(1, 0.84, 0)  -- Gold color
         else
-            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")  -- Empty star
+            -- Empty gray star (same texture, desaturated)
+            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
             favIcon:SetDesaturated(true)
             favIcon:SetVertexColor(0.5, 0.5, 0.5)
         end
@@ -283,10 +286,12 @@ function WarbandNexus:DrawPvEProgress(parent)
             local newStatus = WarbandNexus:ToggleFavoriteCharacter(btn.charKey)
             -- Update icon
             if newStatus then
-                btn.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+                -- Gold star (same texture, just colored)
+                btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
                 btn.icon:SetDesaturated(false)
                 btn.icon:SetVertexColor(1, 0.84, 0)
             else
+                -- Gray star (same texture, desaturated)
                 btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
                 btn.icon:SetDesaturated(true)
                 btn.icon:SetVertexColor(0.5, 0.5, 0.5)

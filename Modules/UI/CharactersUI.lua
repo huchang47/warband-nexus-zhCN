@@ -10,7 +10,6 @@ local WarbandNexus = ns.WarbandNexus
 local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
-local CreateSortableTableHeader = ns.UI_CreateSortableTableHeader
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 
 --============================================================================
@@ -29,13 +28,6 @@ function WarbandNexus:DrawCharacterList(parent)
     local currentPlayerRealm = GetRealmName()
     local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
     
-    -- Load sorting preferences from profile (persistent across sessions)
-    if not parent.sortPrefsLoaded then
-        parent.sortKey = self.db.profile.characterSort.key
-        parent.sortAscending = self.db.profile.characterSort.ascending
-        parent.sortPrefsLoaded = true
-    end
-    
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
@@ -53,18 +45,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    
-    -- Show sorting status
-    local sortText = #characters .. " characters tracked"
-    if parent.sortKey then
-        local sortLabels = {name = "Name", level = "Level", gold = "Gold", lastSeen = "Last Seen"}
-        local sortLabel = sortLabels[parent.sortKey] or parent.sortKey
-        local sortDir = parent.sortAscending and "ascending" or "descending"
-        sortText = sortText .. "  |  |cff9966ffSorted by: " .. sortLabel .. " (" .. sortDir .. ")|r"
-    else
-        sortText = sortText .. "  |  |cff888888Default sort|r"
-    end
-    subtitleText:SetText(sortText)
+    subtitleText:SetText(#characters .. " characters tracked")
     
     yOffset = yOffset + 75 -- Reduced spacing
     
@@ -91,48 +72,15 @@ function WarbandNexus:DrawCharacterList(parent)
     
     yOffset = yOffset + 55 -- Reduced spacing
     
-    -- ===== SORTABLE TABLE HEADER =====
-    -- Offset calculation: online/reorder(50) + star(32) + classIcon(32) = 114
-    local columns = {
-        {key = "name", label = "CHARACTER", align = "LEFT", offset = 114, width = 180},
-        {key = "level", label = "LEVEL", align = "LEFT", offset = 266, width = 100},
-        {key = "gold", label = "GOLD", align = "RIGHT", offset = -140, width = 120},
-        {key = "lastSeen", label = "LAST SEEN", align = "RIGHT", offset = -15, width = 120}
-    }
-    
-    local header, getCurrentSort = CreateSortableTableHeader(
-        parent,
-        columns,
-        width,
-        function(sortKey, isAscending)
-            -- Save sort state (local)
-            parent.sortKey = sortKey
-            parent.sortAscending = isAscending
-            -- Save to profile (persistent)
-            self.db.profile.characterSort.key = sortKey
-            self.db.profile.characterSort.ascending = isAscending
-            -- Refresh to re-sort
-            self:RefreshUI()
-        end,
-        parent.sortKey,
-        parent.sortAscending
-    )
-    
-    header:SetPoint("TOPLEFT", 10, -yOffset)
-    yOffset = yOffset + 30  -- Reduced spacing (was 32)
-    
-    -- ===== SORT CHARACTERS: CURRENT → FAVORITES → REGULAR =====
-    local currentChar = nil
+    -- ===== SORT CHARACTERS: FAVORITES → REGULAR =====
     local favorites = {}
     local regular = {}
     
     for _, char in ipairs(characters) do
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         
-        -- Separate current character
-        if charKey == currentPlayerKey then
-            currentChar = char
-        elseif self:IsFavoriteCharacter(charKey) then
+        -- Add to appropriate list (current character is not separated)
+        if self:IsFavoriteCharacter(charKey) then
             table.insert(favorites, char)
         else
             table.insert(regular, char)
@@ -205,7 +153,7 @@ function WarbandNexus:DrawCharacterList(parent)
     regular = sortCharacters(regular, "regular")
     
     -- ===== EMPTY STATE =====
-    if not currentChar and #favorites == 0 and #regular == 0 then
+    if #characters == 0 then
         local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
         emptyIcon:SetSize(48, 48)
         emptyIcon:SetPoint("TOP", 0, -yOffset - 30)
@@ -225,13 +173,6 @@ function WarbandNexus:DrawCharacterList(parent)
         return yOffset + 200
     end
     
-    -- ===== CURRENT CHARACTER (Single row, no collapse) =====
-    if currentChar then
-        local currentKey = (currentChar.name or "Unknown") .. "-" .. (currentChar.realm or "Unknown")
-        local isCurrentFavorite = self:IsFavoriteCharacter(currentKey)
-        yOffset = self:DrawCharacterRow(parent, currentChar, 0, width, yOffset, isCurrentFavorite, false, nil, nil, true, nil, nil)
-    end
-    
     -- Initialize collapse state (persistent)
     if not self.db.profile.ui then
         self.db.profile.ui = {}
@@ -243,51 +184,73 @@ function WarbandNexus:DrawCharacterList(parent)
         self.db.profile.ui.charactersExpanded = true
     end
     
-    -- ===== FAVORITES SECTION =====
-    if #favorites > 0 then
-        local favHeader, _, favIcon = CreateCollapsibleHeader(
-            parent,
-            string.format("Favorites |cff888888(%d)|r", #favorites),
-            "favorites",
-            self.db.profile.ui.favoritesExpanded,
-            function(isExpanded)
-                self.db.profile.ui.favoritesExpanded = isExpanded
-                self:RefreshUI()
-            end,
-            "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"  -- Heart/people icon
-        )
-        favHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        favHeader:SetPoint("TOPRIGHT", -10, -yOffset)
-        yOffset = yOffset + 32
-        
-        if self.db.profile.ui.favoritesExpanded then
+    -- ===== FAVORITES SECTION (Always show header) =====
+    local favHeader, _, favIcon = CreateCollapsibleHeader(
+        parent,
+        string.format("Favorites |cff888888(%d)|r", #favorites),
+        "favorites",
+        self.db.profile.ui.favoritesExpanded,
+        function(isExpanded)
+            self.db.profile.ui.favoritesExpanded = isExpanded
+            self:RefreshUI()
+        end,
+        "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"  -- Heart/people icon
+    )
+    favHeader:SetPoint("TOPLEFT", 10, -yOffset)
+    favHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    -- Color the favorites header icon gold
+    if favIcon then
+        favIcon:SetVertexColor(1, 0.84, 0)
+    end
+    
+    yOffset = yOffset + 32
+    
+    if self.db.profile.ui.favoritesExpanded then
+        yOffset = yOffset + 3  -- Small spacing after header
+        if #favorites > 0 then
             for i, char in ipairs(favorites) do
-                yOffset = self:DrawCharacterRow(parent, char, i + (currentChar and 1 or 0), width, yOffset, true, true, favorites, "favorites", false, i, #favorites)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, favorites, "favorites", i, #favorites, currentPlayerKey)
             end
+        else
+            -- Empty state
+            local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            emptyText:SetPoint("TOPLEFT", 30, -yOffset)
+            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetText("No favorite characters yet. Click the star icon to favorite a character.")
+            yOffset = yOffset + 35
         end
     end
     
-    -- ===== REGULAR CHARACTERS SECTION =====
-    if #regular > 0 then
-        local charHeader = CreateCollapsibleHeader(
-            parent,
-            string.format("Characters |cff888888(%d)|r", #regular),
-            "characters",
-            self.db.profile.ui.charactersExpanded,
-            function(isExpanded)
-                self.db.profile.ui.charactersExpanded = isExpanded
-                self:RefreshUI()
-            end,
-            "Interface\\Icons\\Achievement_Character_Human_Female"
-        )
-        charHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
-        yOffset = yOffset + 32
-        
-        if self.db.profile.ui.charactersExpanded then
+    -- ===== REGULAR CHARACTERS SECTION (Always show header) =====
+    local charHeader = CreateCollapsibleHeader(
+        parent,
+        string.format("Characters |cff888888(%d)|r", #regular),
+        "characters",
+        self.db.profile.ui.charactersExpanded,
+        function(isExpanded)
+            self.db.profile.ui.charactersExpanded = isExpanded
+            self:RefreshUI()
+        end,
+        "Interface\\Icons\\Achievement_Character_Human_Female"
+    )
+    charHeader:SetPoint("TOPLEFT", 10, -yOffset)
+    charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    yOffset = yOffset + 32
+    
+    if self.db.profile.ui.charactersExpanded then
+        yOffset = yOffset + 3  -- Small spacing after header
+        if #regular > 0 then
             for i, char in ipairs(regular) do
-                yOffset = self:DrawCharacterRow(parent, char, i + (currentChar and 1 or 0) + #favorites, width, yOffset, false, true, regular, "regular", false, i, #regular)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, regular, "regular", i, #regular, currentPlayerKey)
             end
+        else
+            -- Empty state
+            local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            emptyText:SetPoint("TOPLEFT", 30, -yOffset)
+            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetText("All characters are favorited!")
+            yOffset = yOffset + 35
         end
     end
     
@@ -298,43 +261,29 @@ end
 -- DRAW SINGLE CHARACTER ROW
 --============================================================================
 
-function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, isCurrent, positionInList, totalInList)
+function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(width, 36)
+    row:SetSize(width, 38)  -- Taller row height
     row:SetPoint("TOPLEFT", 10, -yOffset)
     row:EnableMouse(true)
     
-    -- Row background (alternating colors, green tint for current)
+    -- Check if this is the current character
+    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    local isCurrent = (charKey == currentPlayerKey)
+    
+    -- Row background (alternating colors)
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    local bgColor
-    if isCurrent then
-        bgColor = {0.08, 0.15, 0.08, 1}  -- Green tint for current character
-    else
-        bgColor = index % 2 == 0 and {0.08, 0.08, 0.10, 1} or {0.05, 0.05, 0.06, 1}
-    end
+    local bgColor = index % 2 == 0 and {0.08, 0.08, 0.10, 1} or {0.05, 0.05, 0.06, 1}
     bg:SetColorTexture(unpack(bgColor))
     row.bgColor = bgColor
     
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
     
-    local leftOffset = 0
+    local leftOffset = 10  -- Start from left edge with minimal padding
     
-    -- Online indicator or reorder buttons (both occupy same space for alignment)
-    if isCurrent then
-        -- Online indicator (green circle) - same width as reorder area
-        local onlineIndicator = row:CreateTexture(nil, "ARTWORK")
-        onlineIndicator:SetSize(16, 16)
-        onlineIndicator:SetPoint("LEFT", leftOffset + 17, 0)  -- Centered in 50px space
-        onlineIndicator:SetTexture("Interface\\FriendsFrame\\StatusIcon-Online")
-        leftOffset = leftOffset + 50  -- Same as reorder buttons
-    elseif showReorder and charList then
-        local reorderButtons = CreateFrame("Frame", nil, row)
-        reorderButtons:SetSize(48, 24)  -- Wider for side-by-side buttons
-        reorderButtons:SetPoint("LEFT", leftOffset, 0)
-        reorderButtons:Hide()
-        reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
+    -- We'll create reorder buttons later, after the name (moved to right side)
         
         -- Up arrow (LEFT side) - Move character UP in list
         local upBtn = CreateFrame("Button", nil, reorderButtons)
@@ -368,52 +317,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end)
         end
         
-        -- Down arrow (RIGHT side) - Move character DOWN in list
-        local downBtn = CreateFrame("Button", nil, reorderButtons)
-        downBtn:SetSize(22, 22)
-        downBtn:SetPoint("RIGHT", 0, 0)
-        
-        -- Disable if last in list
-        if positionInList and totalInList and positionInList == totalInList then
-            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
-            downBtn:SetAlpha(0.5)
-            downBtn:Disable()
-            downBtn:EnableMouse(false)  -- Completely ignore mouse events
-        else
-            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
-            downBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
-            downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            downBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, 1)
-            end)
-            
-            downBtn:SetScript("OnEnter", function()
-                reorderButtons:Show()
-                GameTooltip:SetOwner(downBtn, "ANCHOR_TOP")
-                GameTooltip:SetText("Move Down")
-                GameTooltip:Show()
-            end)
-            
-            downBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-        
-        row.reorderButtons = reorderButtons
-        leftOffset = leftOffset + 50  -- More space for wider buttons
-    else
-        -- No reorder, no online indicator - add spacing to align with others
-        leftOffset = leftOffset + 50  -- Match new reorder width
-    end
-    
     -- Favorite button (star icon)
-    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-    
     local favButton = CreateFrame("Button", nil, row)
-    favButton:SetSize(28, 28)  -- Bigger star
+    favButton:SetSize(22, 22)
     favButton:SetPoint("LEFT", leftOffset, 0)
-    leftOffset = leftOffset + 32
+    leftOffset = leftOffset + 26  -- Spacing after favorite
+    
+    -- Reserve space for online indicator (even if not shown, for alignment)
+    local onlineSpace = 20  -- Spacing for online icon
     
     local favIcon = favButton:CreateTexture(nil, "ARTWORK")
     favIcon:SetAllPoints()
@@ -458,60 +369,178 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         GameTooltip:Hide()
     end)
     
+    -- Online indicator (only for current character, but space is always reserved)
+    if isCurrent then
+        local onlineIndicator = row:CreateTexture(nil, "ARTWORK")
+        onlineIndicator:SetSize(16, 16)
+        onlineIndicator:SetPoint("LEFT", leftOffset, 0)
+        onlineIndicator:SetTexture("Interface\\FriendsFrame\\StatusIcon-Online")
+    end
+    leftOffset = leftOffset + onlineSpace  -- Always add space (aligned)
+    
     -- Class icon
     local classIcon = row:CreateTexture(nil, "ARTWORK")
-    classIcon:SetSize(24, 24)
+    classIcon:SetSize(28, 28)
     classIcon:SetPoint("LEFT", leftOffset, 0)
-    leftOffset = leftOffset + 32
-        local coords = CLASS_ICON_TCOORDS[char.classFile]
-        if coords then
-            classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
-            classIcon:SetTexCoord(unpack(coords))
-        else
-            classIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        end
-        
+    leftOffset = leftOffset + 32  -- Spacing after class icon
+    local coords = CLASS_ICON_TCOORDS[char.classFile]
+    if coords then
+        classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        classIcon:SetTexCoord(unpack(coords))
+    else
+        classIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    
+    -- Evenly distributed columns from left to right
+    local nameOffset = leftOffset
+    local nameWidth = 150
+    
+    local realmOffset = nameOffset + nameWidth + 30  -- 30px gap (includes reorder button space)
+    local realmWidth = 150
+    
+    local levelOffset = realmOffset + realmWidth + 30  -- 30px gap
+    local levelWidth = 35
+    
+    local goldOffset = levelOffset + levelWidth + 30  -- 30px gap
+    local goldAmountWidth = 120  -- Wider for 10,000,000
+    
+    -- Last Seen at the end (right-aligned from row end)
+    local lastSeenWidth = 100
+    
     -- Character name (in class color)
     local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameText:SetPoint("LEFT", leftOffset, 0)
-    nameText:SetWidth(140)
+    nameText:SetPoint("LEFT", nameOffset, 0)
+    nameText:SetWidth(nameWidth - 50)  -- Leave space for reorder buttons
     nameText:SetJustifyH("LEFT")
+    nameText:SetWordWrap(false)
     nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.name or "Unknown"))
     
-    -- Level (in class color, aligned with header at 266)
+    -- Reorder buttons (after name, on the right side)
+    if showReorder and charList then
+        local reorderButtons = CreateFrame("Frame", nil, row)
+        reorderButtons:SetSize(48, 24)
+        reorderButtons:SetPoint("LEFT", nameOffset + nameWidth - 48, 0)  -- Right side of name area
+        reorderButtons:Hide()
+        reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
+        
+        -- Store reference immediately for closures
+        row.reorderButtons = reorderButtons
+        
+        -- Up arrow (LEFT side) - Move character UP in list
+        local upBtn = CreateFrame("Button", nil, reorderButtons)
+        upBtn:SetSize(22, 22)
+        upBtn:SetPoint("LEFT", 0, 0)
+        
+        -- Disable if first in list
+        if positionInList and positionInList == 1 then
+            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
+            upBtn:SetAlpha(0.5)
+            upBtn:Disable()
+            upBtn:EnableMouse(false)
+        else
+            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
+            upBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down")
+            upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+            
+            upBtn:SetScript("OnClick", function()
+                WarbandNexus:ReorderCharacter(char, charList, listKey, -1)
+            end)
+            
+            upBtn:SetScript("OnEnter", function(self)
+                row.reorderButtons:Show()
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText("Move Up")
+                GameTooltip:Show()
+            end)
+            
+            upBtn:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+        
+        -- Down arrow (RIGHT side) - Move character DOWN in list
+        local downBtn = CreateFrame("Button", nil, reorderButtons)
+        downBtn:SetSize(22, 22)
+        downBtn:SetPoint("RIGHT", 0, 0)
+        
+        -- Disable if last in list
+        if positionInList and totalInList and positionInList == totalInList then
+            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
+            downBtn:SetAlpha(0.5)
+            downBtn:Disable()
+            downBtn:EnableMouse(false)
+        else
+            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+            downBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
+            downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+            
+            downBtn:SetScript("OnClick", function()
+                WarbandNexus:ReorderCharacter(char, charList, listKey, 1)
+            end)
+            
+            downBtn:SetScript("OnEnter", function(self)
+                row.reorderButtons:Show()
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText("Move Down")
+                GameTooltip:Show()
+            end)
+            
+            downBtn:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+    end
+    
+    -- Realm (gray)
+    local realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    realmText:SetPoint("LEFT", realmOffset, 0)
+    realmText:SetWidth(realmWidth)
+    realmText:SetJustifyH("LEFT")
+    realmText:SetWordWrap(false)
+    realmText:SetTextColor(0.5, 0.5, 0.5)
+    realmText:SetText(char.realm or "Unknown")
+    
+    -- Level (just the number, centered in its column)
     local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    levelText:SetPoint("LEFT", 266, 0)
+    levelText:SetPoint("LEFT", levelOffset, 0)
+    levelText:SetWidth(levelWidth)
+    levelText:SetJustifyH("CENTER")
     levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.level or 1))
-        
-        -- Gold (aligned with header)
-        local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        goldText:SetPoint("RIGHT", -140, 0)
-        goldText:SetJustifyH("RIGHT")
-        goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
-        
-        -- Last seen (aligned with header)
-        local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        lastSeenText:SetPoint("RIGHT", -15, 0)
-        lastSeenText:SetJustifyH("RIGHT")
-        lastSeenText:SetTextColor(0.5, 0.5, 0.5)
-        if char.lastSeen then
-            local timeDiff = time() - char.lastSeen
-            if timeDiff < 60 then
-                lastSeenText:SetText("Just now")
-            elseif timeDiff < 3600 then
-                lastSeenText:SetText(math.floor(timeDiff / 60) .. "m ago")
-            elseif timeDiff < 86400 then
-                lastSeenText:SetText(math.floor(timeDiff / 3600) .. "h ago")
-            else
-                lastSeenText:SetText(math.floor(timeDiff / 86400) .. "d ago")
-            end
+    
+    -- Gold (just the amount, right-aligned)
+    local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    goldText:SetPoint("LEFT", goldOffset, 0)
+    goldText:SetWidth(goldAmountWidth)
+    goldText:SetJustifyH("RIGHT")
+    goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
+    
+    -- Last Seen (right side of row)
+    local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lastSeenText:SetPoint("RIGHT", -10, 0)  -- Right-aligned from row edge
+    lastSeenText:SetWidth(lastSeenWidth)
+    lastSeenText:SetJustifyH("RIGHT")
+    
+    local lastSeenStr = ""
+    if char.lastSeen then
+        local timeDiff = time() - char.lastSeen
+        if timeDiff < 60 then
+            lastSeenStr = "|cff00ff00Online|r"
+        elseif timeDiff < 3600 then
+            lastSeenStr = math.floor(timeDiff / 60) .. "m ago"
+        elseif timeDiff < 86400 then
+            lastSeenStr = math.floor(timeDiff / 3600) .. "h ago"
         else
-            lastSeenText:SetText("Unknown")
+            lastSeenStr = math.floor(timeDiff / 86400) .. "d ago"
         end
+    else
+        lastSeenStr = "Unknown"
+    end
+    lastSeenText:SetText(lastSeenStr)
+    lastSeenText:SetTextColor(0.7, 0.7, 0.7)
         
     -- Hover effect + Tooltip
     row:SetScript("OnEnter", function(self)
@@ -557,7 +586,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end)
     
-    return yOffset + 38
+    return yOffset + 40  -- Row height (38) + spacing (2)
 end
 
 --============================================================================

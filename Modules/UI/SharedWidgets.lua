@@ -350,14 +350,17 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
     -- State
     local currentSortKey = defaultSortKey or (columns[1] and columns[1].key)
     local isAscending = (defaultAscending ~= false) -- Default true
-    
-    -- Create header frame
-    local header = CreateFrame("Frame", nil, parent)
+
+    -- Create header frame with backdrop (like collapsible headers)
+    local header = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     header:SetSize(width, 28)
-    
-    local hdrBg = header:CreateTexture(nil, "BACKGROUND")
-    hdrBg:SetAllPoints()
-    hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
+    header:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    header:SetBackdropColor(0.1, 0.1, 0.12, 1)  -- Darker background
+    header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)  -- Purple border (same as collapsible headers)
     
     -- Column buttons
     local columnButtons = {}
@@ -376,19 +379,19 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         end
         
         -- Label text (position based on alignment)
-        btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Normal size font
         if col.align == "LEFT" then
-            btn.label:SetPoint("LEFT", 0, 0)
+            btn.label:SetPoint("LEFT", 5, 0)  -- Small padding
             btn.label:SetJustifyH("LEFT")
         elseif col.align == "RIGHT" then
-            btn.label:SetPoint("RIGHT", -12, 0) -- Space for arrow on right
+            btn.label:SetPoint("RIGHT", -17, 0) -- Space for arrow on right
             btn.label:SetJustifyH("RIGHT")
         else
             btn.label:SetPoint("CENTER", -6, 0)
             btn.label:SetJustifyH("CENTER")
         end
         btn.label:SetText(col.label)
-        btn.label:SetTextColor(0.6, 0.6, 0.6)
+        btn.label:SetTextColor(0.8, 0.8, 0.8)  -- Brighter text
         
         -- Sort arrow (^ ascending, v descending, - sortable)
         btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal") -- Bigger font!
@@ -397,24 +400,36 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         else
             btn.arrow:SetPoint("LEFT", btn.label, "RIGHT", 4, 0)
         end
-        btn.arrow:SetText("-") -- Default: sortable indicator
-        btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim gray
-        btn.arrow:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE") -- Explicit larger font
+        btn.arrow:SetText("◆") -- Default: sortable indicator
+        btn.arrow:SetTextColor(0.4, 0.4, 0.4, 0.6) -- Dim gray
         
         -- Update arrow visibility
         local function UpdateArrow()
             if currentSortKey == col.key then
-                btn.arrow:SetText(isAscending and "^" or "v")
-                btn.arrow:SetTextColor(0.4, 0.2, 0.58, 1) -- Purple, full opacity
+                btn.arrow:SetText(isAscending and "▲" or "▼")
+                btn.arrow:SetTextColor(0.6, 0.4, 0.8, 1) -- Brighter purple
                 btn.label:SetTextColor(1, 1, 1) -- Highlight active column
             else
-                btn.arrow:SetText("-") -- Sortable hint
-                btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim
-                btn.label:SetTextColor(0.6, 0.6, 0.6)
+                btn.arrow:SetText("◆") -- Sortable hint (diamond)
+                btn.arrow:SetTextColor(0.4, 0.4, 0.4, 0.6) -- Dim
+                btn.label:SetTextColor(0.8, 0.8, 0.8)
             end
         end
         
         UpdateArrow()
+        
+        -- Hover effect
+        btn:SetScript("OnEnter", function(self)
+            if currentSortKey ~= col.key then
+                self.label:SetTextColor(1, 1, 1)
+            end
+        end)
+        
+        btn:SetScript("OnLeave", function(self)
+            if currentSortKey ~= col.key then
+                self.label:SetTextColor(0.8, 0.8, 0.8)
+            end
+        end)
         
         -- Click handler
         btn:SetScript("OnClick", function()
@@ -438,24 +453,6 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
             if onSortChanged then
                 onSortChanged(currentSortKey, isAscending)
             end
-        end)
-        
-        -- Hover effect
-        btn:SetScript("OnEnter", function(self)
-            self.label:SetTextColor(1, 1, 1)
-            -- Brighten arrow on hover
-            if currentSortKey ~= col.key then
-                self.arrow:SetTextColor(0.55, 0.55, 0.55, 1)
-            end
-            hdrBg:SetColorTexture(0.15, 0.15, 0.18, 1)
-        end)
-        
-        btn:SetScript("OnLeave", function(self)
-            if currentSortKey ~= col.key then
-                self.label:SetTextColor(0.6, 0.6, 0.6)
-                self.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Back to dim
-            end
-            hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
         end)
         
         btn.updateArrow = UpdateArrow
