@@ -1010,12 +1010,18 @@ function WarbandNexus:CheckBankConflictsOnLogin()
     end
     
     -- Filter out addons that user already made a choice for
+    -- BUT: If user chose "useWarband" and re-enabled the addon, ask again!
     local unresolvedConflicts = {}
     for _, addonName in ipairs(conflicts) do
         local choice = self.db.profile.bankConflictChoices[addonName]
-        if not choice then
+        
+        -- Always show popup if:
+        -- 1. No choice recorded yet
+        -- 2. User chose "useWarband" but addon is active again (user re-enabled it!)
+        if not choice or choice == "useWarband" then
             table.insert(unresolvedConflicts, addonName)
         end
+        -- Skip if choice == "useOther" (user wants to keep the other addon)
     end
     
     if #unresolvedConflicts == 0 then
