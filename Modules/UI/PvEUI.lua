@@ -37,28 +37,94 @@ function WarbandNexus:DrawPvEProgress(parent)
         parent.sortPrefsLoaded = true
     end
     
-    -- ===== SORT CHARACTERS (Current player always on top!) =====
-    table.sort(characters, function(a, b)
-        local keyA = (a.name or "Unknown") .. "-" .. (a.realm or "Unknown")
-        local keyB = (b.name or "Unknown") .. "-" .. (b.realm or "Unknown")
+    -- ===== SORT CHARACTERS WITH FAVORITES ALWAYS ON TOP =====
+    -- Use the same sorting logic as Characters tab
+    local currentChar = nil
+    local favorites = {}
+    local regular = {}
+    
+    for _, char in ipairs(characters) do
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         
-        -- 1. Current player always comes first
-        local isCurrentA = (keyA == currentPlayerKey)
-        local isCurrentB = (keyB == currentPlayerKey)
-        
-        if isCurrentA and not isCurrentB then
-            return true
-        elseif not isCurrentA and isCurrentB then
-            return false
-        end
-        
-        -- 2. Default sort: Level (desc) → Name (asc)
-        if (a.level or 0) ~= (b.level or 0) then
-            return (a.level or 0) > (b.level or 0)
+        -- Separate current character
+        if charKey == currentPlayerKey then
+            currentChar = char
+        elseif self:IsFavoriteCharacter(charKey) then
+            table.insert(favorites, char)
         else
-            return (a.name or ""):lower() < (b.name or ""):lower()
+            table.insert(regular, char)
         end
-    end)
+    end
+    
+    -- Sort function (with custom order support, same as Characters tab)
+    local function sortCharacters(list, orderKey)
+        local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder[orderKey] or {}
+        
+        -- If custom order exists and has items, use it
+        if #customOrder > 0 then
+            local ordered = {}
+            local charMap = {}
+            
+            -- Create a map for quick lookup
+            for _, char in ipairs(list) do
+                local key = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                charMap[key] = char
+            end
+            
+            -- Add characters in custom order
+            for _, charKey in ipairs(customOrder) do
+                if charMap[charKey] then
+                    table.insert(ordered, charMap[charKey])
+                    charMap[charKey] = nil  -- Remove to track remaining
+                end
+            end
+            
+            -- Add any new characters not in custom order (at the end, sorted)
+            local remaining = {}
+            for _, char in pairs(charMap) do
+                table.insert(remaining, char)
+            end
+            table.sort(remaining, function(a, b)
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end
+            end)
+            for _, char in ipairs(remaining) do
+                table.insert(ordered, char)
+            end
+            
+            return ordered
+        else
+            -- Default sort: level desc → name asc
+            table.sort(list, function(a, b)
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end
+            end)
+            return list
+        end
+    end
+    
+    -- Sort both groups with custom order
+    favorites = sortCharacters(favorites, "favorites")
+    regular = sortCharacters(regular, "regular")
+    
+    -- Merge: Current first, then favorites, then regular
+    local sortedCharacters = {}
+    if currentChar then
+        table.insert(sortedCharacters, currentChar)
+    end
+    for _, char in ipairs(favorites) do
+        table.insert(sortedCharacters, char)
+    end
+    for _, char in ipairs(regular) do
+        table.insert(sortedCharacters, char)
+    end
+    characters = sortedCharacters
     
     -- ===== HEADER CARD =====
     local titleCard = CreateCard(parent, 70)
@@ -182,9 +248,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         return yOffset + 240
     end
     
-    -- ===== CHARACTER CARDS =====
+    -- ===== CHARACTER CARDS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isFavorite = self:IsFavoriteCharacter(charKey)
         
         -- Character card
         local charCard = CreateCard(parent, 0) -- Height will be set dynamically
@@ -194,9 +262,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         local cardYOffset = 12
         
         -- Favorite button (star icon)
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-        local isFavorite = self:IsFavoriteCharacter(charKey)
-        
         local favButton = CreateFrame("Button", nil, charCard)
         favButton:SetSize(20, 20)
         favButton:SetPoint("TOPLEFT", 15, -cardYOffset)
@@ -215,7 +280,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         favButton.charKey = charKey
         
         favButton:SetScript("OnClick", function(btn)
-            local newStatus = self:ToggleFavoriteCharacter(btn.charKey)
+            local newStatus = WarbandNexus:ToggleFavoriteCharacter(btn.charKey)
             -- Update icon
             if newStatus then
                 btn.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
@@ -227,7 +292,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 btn.icon:SetVertexColor(0.5, 0.5, 0.5)
             end
             -- Refresh to re-sort
-            self:RefreshUI()
+            WarbandNexus:RefreshUI()
         end)
         
         favButton:SetScript("OnEnter", function(btn)

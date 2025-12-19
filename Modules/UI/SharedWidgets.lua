@@ -232,25 +232,31 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     header:SetBackdropColor(0.1, 0.1, 0.12, 1)
     header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
     
-    -- Expand/Collapse button (fixed width to prevent title shift)
-    local expandBtn = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    expandBtn:SetPoint("LEFT", 10, 0)
-    expandBtn:SetWidth(25)  -- Fixed width prevents text shifting
-    expandBtn:SetJustifyH("LEFT")
-    expandBtn:SetText(isExpanded and "[-]" or "[+]")
-    expandBtn:SetTextColor(0.4, 0.2, 0.58)
+    -- Expand/Collapse icon (texture-based)
+    local expandIcon = header:CreateTexture(nil, "ARTWORK")
+    expandIcon:SetSize(16, 16)
+    expandIcon:SetPoint("LEFT", 12, 0)
     
-    local textAnchor = expandBtn
-    local textOffset = 5
+    -- Use WoW's built-in plus/minus button textures
+    if isExpanded then
+        expandIcon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+    else
+        expandIcon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    end
+    expandIcon:SetVertexColor(0.8, 0.6, 1)  -- Purple tint to match theme
+    
+    local textAnchor = expandIcon
+    local textOffset = 8
     
     -- Optional icon
+    local categoryIcon = nil
     if iconTexture then
-        local icon = header:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(20, 20)
-        icon:SetPoint("LEFT", expandBtn, "RIGHT", 10, 0)
-        icon:SetTexture(iconTexture)
-        textAnchor = icon
-        textOffset = 6
+        categoryIcon = header:CreateTexture(nil, "ARTWORK")
+        categoryIcon:SetSize(28, 28)  -- Bigger icon size (same as favorite star in rows)
+        categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
+        categoryIcon:SetTexture(iconTexture)
+        textAnchor = categoryIcon
+        textOffset = 8
     end
     
     -- Header text
@@ -261,7 +267,14 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     
     -- Click handler
     header:SetScript("OnClick", function()
-        onToggle(key)
+        isExpanded = not isExpanded
+        -- Update icon texture
+        if isExpanded then
+            expandIcon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+        else
+            expandIcon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+        end
+        onToggle(isExpanded)
     end)
     
     -- Hover effect
@@ -273,7 +286,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         self:SetBackdropColor(0.1, 0.1, 0.12, 1)
     end)
     
-    return header, expandBtn
+    return header, expandIcon, categoryIcon
 end
 
 -- Get item type name from class ID

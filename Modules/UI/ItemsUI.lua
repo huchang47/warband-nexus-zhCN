@@ -273,8 +273,13 @@ function WarbandNexus:DrawItemList(parent)
         
         -- Toggle function for this group
         local gKey = group.groupKey
-        local function ToggleGroup(key)
-            expandedGroups[gKey] = not expandedGroups[gKey]
+        local function ToggleGroup(key, isExpanded)
+            -- Use isExpanded if provided (new style), otherwise toggle (old style)
+            if type(isExpanded) == "boolean" then
+                expandedGroups[key] = isExpanded
+            else
+                expandedGroups[key] = not expandedGroups[key]
+            end
             WarbandNexus:RefreshUI()
         end
         
@@ -284,7 +289,7 @@ function WarbandNexus:DrawItemList(parent)
             format("%s (%d)", typeName, #group.items),
             gKey,
             isExpanded,
-            ToggleGroup,
+            function(isExpanded) ToggleGroup(gKey, isExpanded) end,
             typeIcon
         )
         groupHeader:SetPoint("TOPLEFT", 10, -yOffset)

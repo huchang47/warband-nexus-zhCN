@@ -59,11 +59,22 @@ function WarbandNexus:DrawStorageTab(parent)
     if not expanded.categories then expanded.categories = {} end
     
     -- Toggle function
-    local function ToggleExpand(key)
-        if key == "warband" or key == "personal" then
-            expanded[key] = not expanded[key]
+    local function ToggleExpand(key, isExpanded)
+        -- If isExpanded is boolean, use it directly (new callback style)
+        -- If isExpanded is nil, toggle manually (old callback style for backwards compat)
+        if type(isExpanded) == "boolean" then
+            if key == "warband" or key == "personal" then
+                expanded[key] = isExpanded
+            else
+                expanded.categories[key] = isExpanded
+            end
         else
-            expanded.categories[key] = not expanded.categories[key]
+            -- Old style toggle (fallback)
+            if key == "warband" or key == "personal" then
+                expanded[key] = not expanded[key]
+            else
+                expanded.categories[key] = not expanded.categories[key]
+            end
         end
         self:RefreshUI()
     end
@@ -136,11 +147,11 @@ function WarbandNexus:DrawStorageTab(parent)
         -- Skip this section
     else
         local warbandHeader, warbandBtn = CreateCollapsibleHeader(
-            parent, 
-            "Warband Bank", 
-            "warband", 
-            warbandExpanded, 
-            ToggleExpand,
+            parent,
+            "Warband Bank",
+            "warband",
+            warbandExpanded,
+            function(isExpanded) ToggleExpand("warband", isExpanded) end,
             "Interface\\Icons\\INV_Misc_Bag_36"
         )
         warbandHeader:SetPoint("TOPLEFT", 10, -yOffset)
@@ -213,7 +224,7 @@ function WarbandNexus:DrawStorageTab(parent)
                     typeName .. " (" .. displayCount .. ")",
                     categoryKey,
                     isTypeExpanded,
-                    ToggleExpand,
+                    function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
                     typeIcon
                 )
                 typeHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
@@ -325,7 +336,7 @@ function WarbandNexus:DrawStorageTab(parent)
             "Personal Banks",
             "personal",
             personalExpanded,
-            ToggleExpand,
+            function(isExpanded) ToggleExpand("personal", isExpanded) end,
             "Interface\\Icons\\Achievement_Character_Human_Male"
         )
         personalHeader:SetPoint("TOPLEFT", 10, -yOffset)
@@ -361,7 +372,7 @@ function WarbandNexus:DrawStorageTab(parent)
                         (charName or charKey),
                         charCategoryKey,
                         isCharExpanded,
-                        ToggleExpand,
+                        function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,
                         charIcon
                     )
                     charHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
@@ -432,7 +443,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                 typeName .. " (" .. displayCount .. ")",
                                 typeKey,
                                 isTypeExpanded,
-                                ToggleExpand,
+                                function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
                                 typeIcon2
                             )
                             typeHeader2:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
