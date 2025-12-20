@@ -52,6 +52,7 @@ Modules\PvE.lua
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
 Modules\UI\CharactersUI.lua
+Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\StorageUI.lua
 Modules\UI\PvEUI.lua

@@ -113,6 +113,9 @@ local defaults = {
         replaceDefaultBank = true, -- Replace default bank UI with addon
         debugMode = false,         -- Debug logging (verbose)
         
+        -- Currency settings
+        currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
+        
         -- Display settings
         showItemLevel = true,
         showItemCount = true,
@@ -241,6 +244,7 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
@@ -530,10 +534,38 @@ function WarbandNexus:SlashCommand(input)
             local key = name .. "-" .. realm
             if self.db.global.characters and self.db.global.characters[key] then
                 self.db.global.characters[key].professions = nil
-                self:Print("Professions reset for " .. key)
-                if self.InvalidateCharacterCache then self:InvalidateCharacterCache() end
-                if self.RefreshUI then self:RefreshUI() end
+                self:Print("Profession data manually reset")
             end
+        end
+    elseif cmd == "currency" or cmd == "curr" then
+        -- Debug currency data
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        self:Print("=== Currency Debug ===")
+        if self.db.global.characters and self.db.global.characters[key] then
+            local char = self.db.global.characters[key]
+            if char.currencies then
+                local count = 0
+                for currencyID, currency in pairs(char.currencies) do
+                    count = count + 1
+                    if count <= 5 then -- Show first 5
+                        self:Print(format("  [%d] %s: %d/%d", currencyID, currency.name or "Unknown", 
+                            currency.quantity or 0, currency.maxQuantity or 0))
+                    end
+                end
+                self:Print(format("Total currencies: %d", count))
+            else
+                self:Print("|cffff0000No currency data found!|r")
+                self:Print("Running UpdateCurrencyData()...")
+                if self.UpdateCurrencyData then
+                    self:UpdateCurrencyData()
+                    self:Print("|cff00ff00Currency data collected! Check again with /wn curr|r")
+                end
+            end
+        else
+            self:Print("|cffff0000Character not found in database!|r")
         end
     elseif cmd == "minimap" then
         if self.ToggleMinimapButton then
@@ -1212,6 +1244,31 @@ function WarbandNexus:OnMoneyChanged()
             self.moneyRefreshPending = true
             C_Timer.After(0.05, function()
                 self.moneyRefreshPending = false
+                if WarbandNexus and WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+        end
+    end
+end
+
+--[[
+    Called when currency changes
+]]
+function WarbandNexus:OnCurrencyChanged()
+    -- Update currency data in background
+    if self.UpdateCurrencyData then
+        self:UpdateCurrencyData()
+    end
+    
+    -- INSTANT UI refresh if currency tab is open
+    local mainFrame = self.UI and self.UI.mainFrame
+    if mainFrame and mainFrame.currentTab == "currency" and self.RefreshUI then
+        -- Use short delay to batch multiple currency events
+        if not self.currencyRefreshPending then
+            self.currencyRefreshPending = true
+            C_Timer.After(0.1, function()
+                self.currencyRefreshPending = false
                 if WarbandNexus and WarbandNexus.RefreshUI then
                     WarbandNexus:RefreshUI()
                 end

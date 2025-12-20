@@ -16,12 +16,15 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
+-- Import shared UI layout constants
+local UI_LAYOUT = ns.UI_LAYOUT
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
+
 -- Performance: Local function references
 local format = string.format
 local date = date
-
--- Constants
-local ROW_HEIGHT = 26
 
 -- Module-level state (shared with main UI.lua via namespace)
 -- These are accessed via ns.UI_GetItemsSubTab(), ns.UI_GetItemsSearchText(), etc.
@@ -293,9 +296,9 @@ function WarbandNexus:DrawItemList(parent)
             typeIcon
         )
         groupHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        
-        yOffset = yOffset + 38
-        
+
+        yOffset = yOffset + HEADER_SPACING
+
         -- Draw items in this group (if expanded)
         if isExpanded then
             for _, item in ipairs(group.items) do
@@ -511,7 +514,7 @@ function WarbandNexus:DrawItemList(parent)
                     end
                 end)
                 
-                yOffset = yOffset + ROW_HEIGHT + 1
+                yOffset = yOffset + ROW_SPACING
             end  -- for item in group.items
         end  -- if group.expanded
     end  -- for typeName in groupOrder

@@ -43,6 +43,20 @@ ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
 
 --============================================================================
+-- LAYOUT CONSTANTS (Unified spacing across all tabs)
+--============================================================================
+
+local UI_LAYOUT = {
+    ROW_HEIGHT = 26,
+    ROW_SPACING = 28,      -- Space between item/currency rows
+    HEADER_SPACING = 38,   -- Space after headers (character, expansion, category)
+    SECTION_SPACING = 25,  -- Space between major sections
+}
+
+-- Export to namespace
+ns.UI_LAYOUT = UI_LAYOUT
+
+--============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
 --============================================================================
 -- Reuse frames instead of creating new ones on every refresh
@@ -625,6 +639,14 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
 end
 
 --============================================================================
+-- SEARCH TEXT GETTERS
+--============================================================================
+
+local function GetCurrencySearchText()
+    return (ns.currencySearchText or ""):lower()
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
@@ -638,6 +660,7 @@ ns.UI_GetTypeIcon = GetTypeIcon
 ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
 ns.UI_CreateSearchBox = CreateSearchBox
+ns.UI_GetCurrencySearchText = GetCurrencySearchText
 
 -- Frame pooling exports
 ns.UI_AcquireItemRow = AcquireItemRow

@@ -208,6 +208,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionData = self.db.global.characters[key].professions
     end
     
+    -- Collect Currency data (always collect for current character)
+    local currencyData = self:CollectCurrencyData()
+    
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -247,6 +250,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         lastSeen = time(),
         professions = professionData, -- Store Profession data
         pve = pveData,  -- Store PvE data
+        currencies = currencyData, -- Store Currency data
         personalBank = personalBank,  -- Store personal bank for search
     }
     
@@ -596,6 +600,246 @@ function WarbandNexus:PerformItemSearch(searchTerm)
     end
     
     return results
+end
+
+-- ============================================================================
+-- CURRENCY DATA
+-- ============================================================================
+
+--[[
+    Important Currency IDs organized by expansion
+]]
+local IMPORTANT_CURRENCIES = {
+    -- ========================================
+    -- THE WAR WITHIN (TWW) - Expansion 11
+    -- ========================================
+
+    -- TWW Crests
+    [2914] = {name = "Weathered Harbinger Crest", icon = 5172958, category = "Crest", expansion = "The War Within"},
+    [2915] = {name = "Carved Harbinger Crest", icon = 5172959, category = "Crest", expansion = "The War Within"},
+    [2916] = {name = "Runed Harbinger Crest", icon = 5172960, category = "Crest", expansion = "The War Within"},
+    [2917] = {name = "Gilded Harbinger Crest", icon = 5172961, category = "Crest", expansion = "The War Within"},
+
+    -- TWW Upgrade Materials
+    [3008] = {name = "Valorstones", icon = 5927555, category = "Upgrade", expansion = "The War Within"},
+    [2815] = {name = "Resonance Crystals", icon = 4549278, category = "Special", expansion = "The War Within"},
+
+    -- TWW Keys
+    [3089] = {name = "Restored Coffer Key", icon = 237446, category = "Key", expansion = "The War Within"},
+    
+    -- TWW Special
+    [2803] = {name = "Undercoin", icon = 5927553, category = "Currency", expansion = "The War Within"},
+    [3056] = {name = "Kej", icon = 5927553, category = "Currency", expansion = "The War Within"},
+    [2122] = {name = "Storm Sigil", icon = 4638721, category = "Currency", expansion = "The War Within"},
+    [2806] = {name = "Renascent Dream", icon = 5172968, category = "Currency", expansion = "The War Within"},
+    [2657] = {name = "Mysterious Fragment", icon = 4548927, category = "Currency", expansion = "The War Within"},
+    [2813] = {name = "Radiant Echo", icon = 134344, category = "Currency", expansion = "The War Within"},
+    [3093] = {name = "Mereldar Derby Mark", icon = 5927556, category = "Event", expansion = "The War Within"},
+    [3010] = {name = "Residual Memories", icon = 237282, category = "Currency", expansion = "The War Within"},
+    [2914] = {name = "Weathered Crests", icon = 5172958, category = "Special", expansion = "The War Within"},
+    [2803] = {name = "Undercoin", icon = 5927553, category = "Currency", expansion = "The War Within"},
+    [2815] = {name = "Resonance Crystals", icon = 4549278, category = "Special", expansion = "The War Within"},
+    [2122] = {name = "Storm Sigil", icon = 4638721, category = "Currency", expansion = "The War Within"},
+    [3100] = {name = "Radiant Remnant", icon = 237282, category = "Currency", expansion = "The War Within"},
+    [2915] = {name = "Carved Crests", icon = 5172959, category = "Crest", expansion = "The War Within"},
+    [2916] = {name = "Runed Crests", icon = 5172960, category = "Crest", expansion = "The War Within"},
+    [2917] = {name = "Gilded Crests", icon = 5172961, category = "Crest", expansion = "The War Within"},
+    
+    -- TWW Professions
+    [2594] = {name = "Artisan's Acuity", icon = 5172970, category = "Profession", expansion = "The War Within"},
+    [3028] = {name = "Algari Treatise", icon = 134939, category = "Profession", expansion = "The War Within"},
+
+    -- ========================================
+    -- DRAGONFLIGHT - Expansion 10
+    -- ========================================
+
+    -- DF Crests (Awakened)
+    [2806] = {name = "Whelpling's Awakened Crest", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
+    [2807] = {name = "Drake's Awakened Crest", icon = 5646099, category = "Crest", expansion = "Dragonflight"},
+    [2809] = {name = "Wyrm's Awakened Crest", icon = 5646101, category = "Crest", expansion = "Dragonflight"},
+    [2812] = {name = "Aspect's Awakened Crest", icon = 5646095, category = "Crest", expansion = "Dragonflight"},
+
+    -- DF Crests (Dreaming)
+    [2706] = {name = "Whelpling's Dreaming Crest", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
+    [2707] = {name = "Drake's Dreaming Crest", icon = 5646099, category = "Crest", expansion = "Dragonflight"},
+    [2708] = {name = "Wyrm's Dreaming Crest", icon = 5646101, category = "Crest", expansion = "Dragonflight"},
+    [2709] = {name = "Aspect's Dreaming Crest", icon = 5646095, category = "Crest", expansion = "Dragonflight"},
+
+    -- DF Upgrade Materials
+    [2245] = {name = "Flightstones", icon = 5172970, category = "Upgrade", expansion = "Dragonflight"},
+    
+    -- DF Supplies & Special
+    [2003] = {name = "Dragon Isles Supplies", icon = 4622291, category = "Supplies", expansion = "Dragonflight"},
+    [2118] = {name = "Elemental Overflow", icon = 4643977, category = "Currency", expansion = "Dragonflight"},
+    [2650] = {name = "Whelplings' Dreaming Crest Fragment", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
+
+    -- ========================================
+    -- SHADOWLANDS - Expansion 9
+    -- ========================================
+    [1820] = {name = "Infused Ruby", icon = 3528288, category = "Currency", expansion = "Shadowlands"},
+    [1906] = {name = "Soul Cinders", icon = 3743739, category = "Currency", expansion = "Shadowlands"},
+    [1931] = {name = "Cataloged Research", icon = 1506458, category = "Currency", expansion = "Shadowlands"},
+    [1979] = {name = "Cyphers of the First Ones", icon = 4197784, category = "Currency", expansion = "Shadowlands"},
+    [1977] = {name = "Stygian Ember", icon = 3743737, category = "Currency", expansion = "Shadowlands"},
+    [1191] = {name = "Valor", icon = 1455894, category = "Currency", expansion = "Shadowlands"},
+
+    -- ========================================
+    -- BATTLE FOR AZEROTH - Expansion 8
+    -- ========================================
+    [1580] = {name = "Seal of Wartorn Fate", icon = 2032600, category = "Currency", expansion = "Battle for Azeroth"},
+    [1721] = {name = "Prismatic Manapearl", icon = 2000861, category = "Currency", expansion = "Battle for Azeroth"},
+    [1755] = {name = "Coalescing Visions", icon = 3193843, category = "Currency", expansion = "Battle for Azeroth"},
+    [1560] = {name = "War Resources", icon = 2032592, category = "Currency", expansion = "Battle for Azeroth"},
+
+    -- ========================================
+    -- LEGION - Expansion 7
+    -- ========================================
+    [1226] = {name = "Nethershard", icon = 1604167, category = "Currency", expansion = "Legion"},
+    [1342] = {name = "Legionfall War Supplies", icon = 1397630, category = "Supplies", expansion = "Legion"},
+    [1533] = {name = "Wakening Essence", icon = 1686582, category = "Currency", expansion = "Legion"},
+    [1508] = {name = "Veiled Argunite", icon = 1064188, category = "Currency", expansion = "Legion"},
+    [1220] = {name = "Order Resources", icon = 1397630, category = "Currency", expansion = "Legion"},
+
+    -- ========================================
+    -- WARLORDS OF DRAENOR - Expansion 6
+    -- ========================================
+    [824] = {name = "Garrison Resources", icon = 1005027, category = "Currency", expansion = "Warlords of Draenor"},
+    [823] = {name = "Apexis Crystal", icon = 1061300, category = "Currency", expansion = "Warlords of Draenor"},
+    [994] = {name = "Seal of Tempered Fate", icon = 1129677, category = "Currency", expansion = "Warlords of Draenor"},
+
+    -- ========================================
+    -- MISTS OF PANDARIA - Expansion 5
+    -- ========================================
+    [777] = {name = "Timeless Coin", icon = 900319, category = "Currency", expansion = "Mists of Pandaria"},
+    [738] = {name = "Lesser Charm of Good Fortune", icon = 645217, category = "Currency", expansion = "Mists of Pandaria"},
+    [697] = {name = "Elder Charm of Good Fortune", icon = 645217, category = "Currency", expansion = "Mists of Pandaria"},
+    [776] = {name = "Warforged Seal", icon = 939380, category = "Currency", expansion = "Mists of Pandaria"},
+
+    -- ========================================
+    -- CATACLYSM - Expansion 4
+    -- ========================================
+    [614] = {name = "Mote of Darkness", icon = 514016, category = "Currency", expansion = "Cataclysm"},
+    [615] = {name = "Essence of Corrupted Deathwing", icon = 538040, category = "Currency", expansion = "Cataclysm"},
+
+    -- ========================================
+    -- ACCOUNT-WIDE / LEGACY
+    -- ========================================
+    [1166] = {name = "Timewarped Badge", icon = 1129674, category = "Event", expansion = "Legacy", accountWide = true},
+    [1275] = {name = "Curious Coin", icon = 1604167, category = "Shop", expansion = "Legacy", accountWide = true},
+    [2032] = {name = "Trader's Tender", icon = 4696085, category = "Shop", expansion = "Account-Wide", accountWide = true},
+    
+    -- PvP (Current Season)
+    [1602] = {name = "Conquest", icon = 1523630, category = "PvP", expansion = "Current Season"},
+    [1792] = {name = "Honor", icon = 1455894, category = "PvP", expansion = "Current Season"},
+}
+
+--[[
+    Collect all currency data for current character
+    Collects ALL important currencies, regardless of quantity
+    @return table - Currency data { [currencyID] = {quantity, maxQuantity, name, icon, ...} }
+]]
+function WarbandNexus:CollectCurrencyData()
+    local success, result = pcall(function()
+        local currencies = {}
+        
+        if not C_CurrencyInfo then
+            self:Debug("C_CurrencyInfo API not available!")
+            return currencies
+        end
+        
+        -- Collect from IMPORTANT_CURRENCIES list
+        for currencyID, metadata in pairs(IMPORTANT_CURRENCIES) do
+            local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+            
+            if currencyInfo and currencyInfo.name then
+                -- Skip if this is a header or truly hidden
+                local isReallyHidden = (currencyInfo.isHeader or false) or 
+                                      (not currencyInfo.discovered and currencyInfo.quantity == 0)
+                
+                -- Add ALL currencies, even if quantity is 0
+                currencies[currencyID] = {
+                    name = currencyInfo.name or metadata.name,
+                    quantity = currencyInfo.quantity or 0,
+                    maxQuantity = currencyInfo.maxQuantity or 0,
+                    iconFileID = currencyInfo.iconFileID or metadata.icon,
+                    quality = currencyInfo.quality or 1,
+                    useTotalEarnedForMaxQty = currencyInfo.useTotalEarnedForMaxQty,
+                    canEarnPerWeek = currencyInfo.canEarnPerWeek,
+                    quantityEarnedThisWeek = currencyInfo.quantityEarnedThisWeek or 0,
+                    isCapped = (currencyInfo.maxQuantity and currencyInfo.maxQuantity > 0 and
+                               currencyInfo.quantity >= currencyInfo.maxQuantity),
+                    isAccountWide = currencyInfo.isAccountWide or metadata.accountWide or false,
+                    isAccountTransferable = currencyInfo.isAccountTransferable or false,
+                    discovered = currencyInfo.discovered or false,
+                    isHidden = isReallyHidden,
+                    category = metadata.category or "Other",
+                    expansion = metadata.expansion or "Other",
+                }
+                
+                if currencies[currencyID].quantity > 0 then
+                    self:Debug("  → Added currency [" .. currencyID .. "]: " .. currencies[currencyID].name .. 
+                        " (" .. currencies[currencyID].quantity .. "/" .. (currencies[currencyID].maxQuantity or "∞") .. ")")
+                end
+            end
+        end
+        
+        local totalWithQuantity = 0
+        for _, curr in pairs(currencies) do
+            if curr.quantity > 0 then
+                totalWithQuantity = totalWithQuantity + 1
+            end
+        end
+        
+        self:Debug("Total currencies collected: " .. self:TableCount(currencies) .. " (with quantity: " .. totalWithQuantity .. ")")
+        return currencies
+    end)
+    
+    if not success then
+        self:Debug("Error in CollectCurrencyData: " .. tostring(result))
+        return {}
+    end
+    
+    return result
+end
+
+--[[
+    Update currency data for current character
+]]
+function WarbandNexus:UpdateCurrencyData()
+    local success, err = pcall(function()
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        if not self.db.global.characters or not self.db.global.characters[key] then return end
+        
+        local currencyData = self:CollectCurrencyData()
+        self.db.global.characters[key].currencies = currencyData
+        self.db.global.characters[key].lastSeen = time()
+        
+        -- Invalidate cache
+        if self.InvalidateCharacterCache then
+            self:InvalidateCharacterCache()
+        end
+        
+        self:Debug("Currencies updated for " .. key .. " (" .. self:TableCount(currencyData) .. " currencies)")
+    end)
+    
+    if not success then
+        self:Debug("Error in UpdateCurrencyData: " .. tostring(err))
+    end
+end
+
+--[[
+    Helper: Count table entries
+]]
+function WarbandNexus:TableCount(tbl)
+    if not tbl then return 0 end
+    local count = 0
+    for _ in pairs(tbl) do
+        count = count + 1
+    end
+    return count
 end
 
 -- ============================================================================

@@ -209,7 +209,7 @@ function WarbandNexus:DrawCharacterList(parent)
         favIcon:SetVertexColor(1, 0.84, 0)
     end
     
-    yOffset = yOffset + 32
+    yOffset = yOffset + 38  -- Standard header spacing
     
     if self.db.profile.ui.favoritesExpanded then
         yOffset = yOffset + 3  -- Small spacing after header
@@ -241,7 +241,7 @@ function WarbandNexus:DrawCharacterList(parent)
     )
     charHeader:SetPoint("TOPLEFT", 10, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
-    yOffset = yOffset + 32
+    yOffset = yOffset + 38  -- Standard header spacing
     
     if self.db.profile.ui.charactersExpanded then
         yOffset = yOffset + 3  -- Small spacing after header

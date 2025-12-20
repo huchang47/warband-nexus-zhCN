@@ -44,6 +44,7 @@ local expandedGroups = {} -- Persisted expand/collapse state for item groups
 -- Search text state (exposed to namespace for sub-modules to access directly)
 ns.itemsSearchText = ""
 ns.storageSearchText = ""
+ns.currencySearchText = ""
 
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
@@ -56,6 +57,7 @@ ns.UI_SetItemsSubTab = function(val)
 end
 ns.UI_GetItemsSearchText = function() return ns.itemsSearchText end
 ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
+ns.UI_GetCurrencySearchText = function() return ns.currencySearchText end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
 
 --============================================================================
@@ -622,10 +624,11 @@ function WarbandNexus:CreateMainWindow()
     -- Create tabs with equal spacing (105px width + 5px gap = 110px spacing)
     local tabSpacing = 110
     f.tabButtons["chars"] = CreateTabButton(nav, "Characters", "chars", 10)
-    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
-    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
-    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 4)
+    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing)
+    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing * 2)
+    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 3)
+    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 4)
+    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 5)
     
     -- Settings button
     local settingsBtn = CreateFrame("Button", nil, nav)
@@ -832,7 +835,7 @@ function WarbandNexus:PopulateContent()
     end
     
     -- Show/hide searchArea and create persistent search boxes
-    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage")
+    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage" or mainFrame.currentTab == "currency")
     
     if mainFrame.searchArea then
         if isSearchTab then
@@ -879,15 +882,36 @@ function WarbandNexus:PopulateContent()
                 storageSearch:SetPoint("TOPLEFT", 10, -8)
                 storageSearch:Hide()
                 mainFrame.persistentSearchBoxes.storage = storageSearch
+                
+                -- Currency search box
+                local currencySearch, currencyClear = CreateSearchBox(
+                    mainFrame.searchArea,
+                    width,
+                    "Search currencies...",
+                    function(searchText)
+                        ns.currencySearchText = searchText
+                        self:PopulateContent()
+                    end,
+                    0.4
+                )
+                currencySearch:SetPoint("TOPLEFT", 10, -8)
+                currencySearch:Hide()
+                mainFrame.persistentSearchBoxes.currency = currencySearch
             end
             
             -- Show appropriate search box
             if mainFrame.currentTab == "items" then
                 mainFrame.persistentSearchBoxes.items:Show()
                 mainFrame.persistentSearchBoxes.storage:Hide()
-            else -- storage
+                mainFrame.persistentSearchBoxes.currency:Hide()
+            elseif mainFrame.currentTab == "storage" then
                 mainFrame.persistentSearchBoxes.items:Hide()
                 mainFrame.persistentSearchBoxes.storage:Show()
+                mainFrame.persistentSearchBoxes.currency:Hide()
+            else -- currency
+                mainFrame.persistentSearchBoxes.items:Hide()
+                mainFrame.persistentSearchBoxes.storage:Hide()
+                mainFrame.persistentSearchBoxes.currency:Show()
             end
         else
             mainFrame.searchArea:Hide()
@@ -901,6 +925,7 @@ function WarbandNexus:PopulateContent()
             if mainFrame.persistentSearchBoxes then
                 mainFrame.persistentSearchBoxes.items:Hide()
                 mainFrame.persistentSearchBoxes.storage:Hide()
+                mainFrame.persistentSearchBoxes.currency:Hide()
             end
         end
     end
@@ -909,6 +934,8 @@ function WarbandNexus:PopulateContent()
     local height
     if mainFrame.currentTab == "chars" then
         height = self:DrawCharacterList(scrollChild)
+    elseif mainFrame.currentTab == "currency" then
+        height = self:DrawCurrencyTab(scrollChild)
     elseif mainFrame.currentTab == "items" then
         height = self:DrawItemList(scrollChild)
     elseif mainFrame.currentTab == "storage" then

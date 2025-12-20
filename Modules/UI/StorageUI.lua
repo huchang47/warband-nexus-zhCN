@@ -15,6 +15,13 @@ local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
 
+-- Import shared UI layout constants
+local UI_LAYOUT = ns.UI_LAYOUT
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
+
 -- Performance: Local function references
 local format = string.format
 
@@ -155,7 +162,7 @@ function WarbandNexus:DrawStorageTab(parent)
             "Interface\\Icons\\INV_Misc_Bag_36"
         )
         warbandHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        yOffset = yOffset + 38
+        yOffset = yOffset + HEADER_SPACING
     end
     
     if warbandExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"]) then
@@ -229,7 +236,7 @@ function WarbandNexus:DrawStorageTab(parent)
                 )
                 typeHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
                 typeHeader:SetWidth(width - indent)
-                yOffset = yOffset + 38
+                yOffset = yOffset + HEADER_SPACING
                 
                 if isTypeExpanded then
                     -- Display items in this category (with search filter)
@@ -244,7 +251,7 @@ function WarbandNexus:DrawStorageTab(parent)
                             
                             -- Items tab style row
                             local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                            itemRow:SetSize(width - indent, 26)
+                            itemRow:SetSize(width - indent, ROW_HEIGHT)
                             itemRow:SetPoint("TOPLEFT", 10 + indent, -yOffset)
                             itemRow:SetBackdrop({
                                 bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -302,7 +309,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                 GameTooltip:Hide()
                             end)
                             
-                            yOffset = yOffset + 28
+                            yOffset = yOffset + ROW_SPACING
                         end
                     end
                 end
@@ -314,7 +321,7 @@ function WarbandNexus:DrawStorageTab(parent)
             emptyText:SetPoint("TOPLEFT", 10 + indent, -yOffset)
             emptyText:SetTextColor(0.5, 0.5, 0.5)
             emptyText:SetText("  No items in Warband Bank")
-            yOffset = yOffset + 25
+            yOffset = yOffset + SECTION_SPACING
         end
     end
     
@@ -340,7 +347,7 @@ function WarbandNexus:DrawStorageTab(parent)
             "Interface\\Icons\\Achievement_Character_Human_Male"
         )
         personalHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        yOffset = yOffset + 38
+        yOffset = yOffset + HEADER_SPACING
     end
     
     if personalExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"]) then
@@ -377,8 +384,8 @@ function WarbandNexus:DrawStorageTab(parent)
                     )
                     charHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
                     charHeader:SetWidth(width - indent)
-                    yOffset = yOffset + 38
-                    
+                    yOffset = yOffset + HEADER_SPACING
+
                     if isCharExpanded then
                     -- Group character's items by type
                     local charItems = {}
@@ -448,8 +455,8 @@ function WarbandNexus:DrawStorageTab(parent)
                             )
                             typeHeader2:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
                             typeHeader2:SetWidth(width - indent * 2)
-                            yOffset = yOffset + 38
-                            
+                            yOffset = yOffset + HEADER_SPACING
+
                             if isTypeExpanded then
                                 -- Display items (with search filter)
                                 local rowIdx = 0
@@ -463,7 +470,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                         
                                         -- Items tab style row
                                         local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                                        itemRow:SetSize(width - indent * 2, 26)
+                                        itemRow:SetSize(width - indent * 2, ROW_HEIGHT)
                                         itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
                                         itemRow:SetBackdrop({
                                             bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -520,8 +527,8 @@ function WarbandNexus:DrawStorageTab(parent)
                                             self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
                                             GameTooltip:Hide()
                                         end)
-                                        
-                                        yOffset = yOffset + 28
+
+                                        yOffset = yOffset + ROW_SPACING
                                     end
                                 end
                             end
@@ -533,7 +540,7 @@ function WarbandNexus:DrawStorageTab(parent)
                         emptyText:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
                         emptyText:SetTextColor(0.5, 0.5, 0.5)
                         emptyText:SetText("    No items in personal bank")
-                        yOffset = yOffset + 25
+                        yOffset = yOffset + SECTION_SPACING
                     end
                     end
                 end
