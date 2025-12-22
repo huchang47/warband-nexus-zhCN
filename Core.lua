@@ -916,11 +916,16 @@ function WarbandNexus:DetectBankAddonConflicts()
         -- TWW (11.0+) uses C_AddOns.IsAddOnLoaded(), older versions use IsAddOnLoaded()
         local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
         
-        -- Check for popular bank/inventory management addons
-        local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
-        
-        -- List of known conflicting addons
+        -- List of known conflicting addons (popular bank/bag addons)
         local conflictingAddons = {
+            -- Popular bag addons
+            "Bagnon", "Combuctor", "ArkInventory", "AdiBags", "Baganator",
+            "LiteBag", "TBag", "BaudBag", "Inventorian",
+            -- ElvUI modules
+            "ElvUI_Bags", "ElvUI",
+            -- Bank-specific
+            "BankStack", "BankItems", "Sorted",
+            -- Generic names (legacy)
             "BankUI", "InventoryManager", "BagAddon", "BankModifier",
             "CustomBank", "AdvancedInventory", "BagSystem"
         }
