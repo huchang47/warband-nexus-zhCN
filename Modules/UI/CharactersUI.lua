@@ -6,8 +6,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Import shared UI components
-local COLORS = ns.UI_COLORS
+-- Import shared UI components (always get fresh reference)
+local function GetCOLORS()
+    return ns.UI_COLORS
+end
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -40,7 +42,11 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    titleText:SetText("|cffa335eeYour Characters|r")
+    -- Dynamic theme color for title
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
@@ -59,6 +65,7 @@ function WarbandNexus:DrawCharacterList(parent)
     goldCard:SetPoint("TOPLEFT", 10, -yOffset)
     goldCard:SetPoint("TOPRIGHT", -10, -yOffset)
     goldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
+    -- Keep gold border as gold color (special case)
     goldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
     
     local goldIcon = goldCard:CreateTexture(nil, "ARTWORK")

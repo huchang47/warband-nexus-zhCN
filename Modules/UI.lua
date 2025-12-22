@@ -457,7 +457,7 @@ function WarbandNexus:CreateMainWindow()
         edgeSize = 2,
     })
     f:SetBackdropColor(unpack(COLORS.bg))
-    f:SetBackdropBorderColor(unpack(COLORS.accent))
+    f:SetBackdropBorderColor(unpack(COLORS.border))
     
     -- Resize handle
     local resizeBtn = CreateFrame("Button", nil, f)
@@ -485,6 +485,7 @@ function WarbandNexus:CreateMainWindow()
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
     })
     header:SetBackdropColor(unpack(COLORS.accentDark))
+    f.header = header  -- Store reference for color updates
 
     -- Icon
     local icon = header:CreateTexture(nil, "ARTWORK")
@@ -496,6 +497,7 @@ function WarbandNexus:CreateMainWindow()
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     title:SetText("|cffffffffWarband Nexus|r")
+    f.title = title  -- Store reference for color updates
     
     -- Status badge (modern rounded pill badge with NineSlice)
     local statusBadge = CreateFrame("Frame", nil, header)
@@ -569,20 +571,22 @@ function WarbandNexus:CreateMainWindow()
         btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
         btn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
         
-        -- Glow overlay for active/hover states
+        -- Glow overlay for active/hover states (dynamic color)
         local glow = btn:CreateTexture(nil, "ARTWORK")
         glow:SetPoint("TOPLEFT", 3, -3)
         glow:SetPoint("BOTTOMRIGHT", -3, 3)
-        glow:SetColorTexture(0.6, 0.4, 0.9, 0.15)
+        local glowColor = COLORS.accent
+        glow:SetColorTexture(glowColor[1], glowColor[2], glowColor[3], 0.15)
         glow:SetAlpha(0)
         btn.glow = glow
         
-        -- Active indicator bar (bottom, rounded)
+        -- Active indicator bar (bottom, rounded) (dynamic color)
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
         activeBar:SetHeight(3)
         activeBar:SetPoint("BOTTOMLEFT", 8, 4)
         activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
-        activeBar:SetColorTexture(0.6, 0.4, 0.9, 1)  -- Purple
+        local accentColor = COLORS.accent
+        activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
 
@@ -594,8 +598,10 @@ function WarbandNexus:CreateMainWindow()
 
         btn:SetScript("OnEnter", function(self)
             if self.active then return end
-            self:SetBackdropColor(0.20, 0.14, 0.28, 1)  -- Purple tint hover
-            self:SetBackdropBorderColor(0.6, 0.4, 0.9, 0.8)  -- Purple border
+            local hoverColor = COLORS.tabHover
+            local borderColor = COLORS.accent
+            self:SetBackdropColor(hoverColor[1], hoverColor[2], hoverColor[3], 1)
+            self:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
             glow:SetAlpha(0.3)
         end)
         btn:SetScript("OnLeave", function(self)
@@ -620,6 +626,23 @@ function WarbandNexus:CreateMainWindow()
     f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 3)
     f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 4)
     f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 5)
+    
+    -- Function to update tab colors dynamically
+    f.UpdateTabColors = function()
+        local freshColors = ns.UI_COLORS
+        for _, btn in pairs(f.tabButtons) do
+            if btn.glow then
+                btn.glow:SetColorTexture(freshColors.accent[1], freshColors.accent[2], freshColors.accent[3], 0.15)
+            end
+            if btn.activeBar then
+                btn.activeBar:SetColorTexture(freshColors.accent[1], freshColors.accent[2], freshColors.accent[3], 1)
+            end
+            if btn.active then
+                local activeColor = freshColors.tabActive
+                btn:SetBackdropColor(activeColor[1], activeColor[2], activeColor[3], 1)
+            end
+        end
+    end
     
     -- Settings button
     local settingsBtn = CreateFrame("Button", nil, nav)
@@ -690,10 +713,15 @@ function WarbandNexus:CreateMainWindow()
     -- Action buttons (right side)
     -- Note: Button states are updated in UpdateButtonStates()
     
-    local classicBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    local classicBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
     classicBtn:SetSize(90, 24)
     classicBtn:SetPoint("RIGHT", -10, 0)
     classicBtn:SetText("Classic Bank")
+    classicBtn:SetBackdrop({
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    classicBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
     classicBtn:SetScript("OnClick", function()
         if WarbandNexus.bankIsOpen then
             -- Enter Classic Bank mode
@@ -720,10 +748,15 @@ function WarbandNexus:CreateMainWindow()
     classicBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.classicBtn = classicBtn
     
-    local sortBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    local sortBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
     sortBtn:SetSize(55, 24)
     sortBtn:SetPoint("RIGHT", classicBtn, "LEFT", -5, 0)
     sortBtn:SetText("Sort")
+    sortBtn:SetBackdrop({
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    sortBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
     sortBtn:SetScript("OnClick", function()
         if WarbandNexus.bankIsOpen then
             WarbandNexus:SortWarbandBank()
@@ -733,10 +766,15 @@ function WarbandNexus:CreateMainWindow()
     end)
     f.sortBtn = sortBtn
     
-    local scanBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    local scanBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
     scanBtn:SetSize(55, 24)
     scanBtn:SetPoint("RIGHT", sortBtn, "LEFT", -5, 0)
     scanBtn:SetText("Scan")
+    scanBtn:SetBackdrop({
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    scanBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
     scanBtn:SetScript("OnClick", function()
         local scannedAny = false
         
@@ -796,12 +834,15 @@ function WarbandNexus:PopulateContent()
     -- Update status
     self:UpdateStatus()
     
-    -- Update tabs with modern active state (rounded style)
+    -- Update tabs with modern active state (rounded style) - Dynamic colors
+    local freshColors = ns.UI_COLORS
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
-            btn:SetBackdropColor(0.18, 0.12, 0.24, 1)  -- Darker purple for active
-            btn:SetBackdropBorderColor(0.6, 0.4, 0.9, 1)  -- Bright purple border
+            local activeColor = freshColors.tabActive
+            local accentColor = freshColors.accent
+            btn:SetBackdropColor(activeColor[1], activeColor[2], activeColor[3], 1)
+            btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
             btn.label:SetTextColor(1, 1, 1)
             btn.label:SetFont(btn.label:GetFont(), 12, "OUTLINE")
             if btn.glow then

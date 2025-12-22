@@ -234,9 +234,189 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.goldReserve = value end,
         },
         
+        -- ===== THEME & APPEARANCE =====
+        themeHeader = {
+            order = 35,
+            type = "header",
+            name = "Theme & Appearance",
+        },
+        themeDesc = {
+            order = 36,
+            type = "description",
+            name = "Choose your primary theme color. All variations (borders, tabs, highlights) will be automatically generated. Changes apply in real-time!\n",
+        },
+        themeMasterColor = {
+            order = 37,
+            type = "color",
+            name = "Master Theme Color",
+            desc = "Choose your primary theme color. All variations (borders, tabs, highlights) will be automatically generated.",
+            hasAlpha = false,
+            width = "full",
+            get = function()
+                local c = WarbandNexus.db.profile.themeColors.accent
+                return c[1], c[2], c[3]
+            end,
+            set = function(_, r, g, b)
+                -- This is called when user clicks OK in the color picker
+                print(string.format("COLOR SET CALLBACK: R=%.2f, G=%.2f, B=%.2f", r, g, b))
+                print(string.format("Before setting confirmed: %s", tostring(colorPickerConfirmed)))
+                
+                -- Mark as confirmed so OnHide doesn't restore
+                colorPickerConfirmed = true
+                
+                print(string.format("After setting confirmed: %s", tostring(colorPickerConfirmed)))
+                
+                -- Clear backup immediately - user confirmed
+                colorPickerOriginalColors = nil
+                print("Backup cleared in set callback")
+                
+                -- Save the final color to database
+                local finalColors = ns.UI_CalculateThemeColors(r, g, b)
+                WarbandNexus.db.profile.themeColors = finalColors
+                
+                print("COLOR SAVED TO DB")
+                
+                -- Refresh UI with final colors
+                if ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                    print("COLOR REFRESH CALLED")
+                end
+            end,
+        },
+         themePresetPurple = {
+            order = 38,
+            type = "execute",
+            name = "Purple Theme",
+            desc = "Classic purple theme (default)",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(0.40, 0.20, 0.58)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Purple theme applied!")
+            end,
+        },
+         themePresetBlue = {
+            order = 39,
+            type = "execute",
+            name = "Blue Theme",
+            desc = "Cool blue theme",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(0.30, 0.65, 1.0)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Blue theme applied!")
+            end,
+        },
+         themePresetGreen = {
+            order = 40,
+            type = "execute",
+            name = "Green Theme",
+            desc = "Nature green theme",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(0.32, 0.79, 0.40)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Green theme applied!")
+            end,
+        },
+         themePresetRed = {
+            order = 41,
+            type = "execute",
+            name = "Red Theme",
+            desc = "Fiery red theme",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(1.0, 0.34, 0.34)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Red theme applied!")
+            end,
+        },
+         themePresetOrange = {
+            order = 42,
+            type = "execute",
+            name = "Orange Theme",
+            desc = "Warm orange theme",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(1.0, 0.65, 0.30)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Orange theme applied!")
+            end,
+        },
+         themePresetCyan = {
+            order = 43,
+            type = "execute",
+            name = "Cyan Theme",
+            desc = "Bright cyan theme",
+            width = 0.5,
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                local colors = ns.UI_CalculateThemeColors(0.00, 0.80, 1.00)
+                WarbandNexus.db.profile.themeColors = colors
+                if ns.UI_RefreshColors then ns.UI_RefreshColors() end
+                WarbandNexus:Print("Cyan theme applied!")
+            end,
+        },
+         themeResetButton = {
+            order = 44,
+            type = "execute",
+            name = "Reset to Default (Purple)",
+            desc = "Reset all theme colors to their default purple theme.",
+            width = "full",
+            func = function()
+                -- Show addon window to see the color change
+                if WarbandNexus.ShowMainWindow then
+                    WarbandNexus:ShowMainWindow()
+                end
+                
+                -- Reset to defaults using calculation
+                local colors = ns.UI_CalculateThemeColors(0.40, 0.20, 0.58)
+                WarbandNexus.db.profile.themeColors = colors
+                -- Refresh colors
+                if ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+                WarbandNexus:Print("Theme colors reset to default!")
+            end,
+        },
+        
         -- ===== TAB FILTERING =====
         tabHeader = {
-            order = 40,
+            order = 45,
             type = "header",
             name = "Tab Filtering",
         },
@@ -368,6 +548,114 @@ local options = {
     },
 }
 
+-- ===== COLOR PICKER REAL-TIME PREVIEW HOOK =====
+local colorPickerOriginalColors = nil
+local colorPickerHookInstalled = false
+local colorPickerTicker = nil
+local lastR, lastG, lastB = nil, nil, nil
+local colorPickerConfirmed = false
+
+-- Polling-based ColorPickerFrame hook for real-time preview
+-- This approach works reliably with AceConfig which overrides ColorPickerFrame.func
+local function InstallColorPickerPreviewHook()
+    if colorPickerHookInstalled then return end
+    colorPickerHookInstalled = true
+    
+    -- Monitor when ColorPickerFrame is shown
+    ColorPickerFrame:HookScript("OnShow", function()
+        print("COLOR PICKER OPENED")
+        
+        -- Reset confirmation flag
+        colorPickerConfirmed = false
+        
+        -- Show addon window when color picker opens
+        if WarbandNexus and WarbandNexus.ShowMainWindow then
+            WarbandNexus:ShowMainWindow()
+        end
+        
+        -- Backup original colors when picker opens
+        local current = WarbandNexus.db.profile.themeColors
+        colorPickerOriginalColors = {
+            accent = {current.accent[1], current.accent[2], current.accent[3]},
+            accentDark = {current.accentDark[1], current.accentDark[2], current.accentDark[3]},
+            border = {current.border[1], current.border[2], current.border[3]},
+            tabActive = {current.tabActive[1], current.tabActive[2], current.tabActive[3]},
+            tabHover = {current.tabHover[1], current.tabHover[2], current.tabHover[3]},
+        }
+        
+        print(string.format("BACKED UP COLORS: R=%.2f, G=%.2f, B=%.2f", current.accent[1], current.accent[2], current.accent[3]))
+        
+        -- Initialize last known RGB values
+        lastR, lastG, lastB = ColorPickerFrame:GetColorRGB()
+        
+        -- Start polling ticker (20 times per second)
+        if colorPickerTicker then
+            colorPickerTicker:Cancel()
+        end
+        
+        colorPickerTicker = C_Timer.NewTicker(0.05, function()
+            if not ColorPickerFrame:IsShown() then
+                -- Picker closed, ticker will be cancelled by OnHide
+                return
+            end
+            
+            local r, g, b = ColorPickerFrame:GetColorRGB()
+            
+            -- Check if color changed (with small tolerance for floating point comparison)
+            local tolerance = 0.001
+            if math.abs(r - (lastR or 0)) > tolerance or 
+               math.abs(g - (lastG or 0)) > tolerance or 
+               math.abs(b - (lastB or 0)) > tolerance then
+                
+                lastR, lastG, lastB = r, g, b
+                
+                print(string.format("COLOR PREVIEW: R=%.2f, G=%.2f, B=%.2f", r, g, b))
+                
+                -- Update preview (temporary, not saved to DB yet)
+                local previewColors = ns.UI_CalculateThemeColors(r, g, b)
+                WarbandNexus.db.profile.themeColors = previewColors
+                
+                if ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+            end
+        end)
+    end)
+    
+    -- Monitor when ColorPickerFrame is hidden
+    ColorPickerFrame:HookScript("OnHide", function()
+        print("COLOR PICKER CLOSED")
+        
+        -- Stop polling ticker
+        if colorPickerTicker then
+            colorPickerTicker:Cancel()
+            colorPickerTicker = nil
+        end
+        
+        -- Delay to allow set callback to fire first
+        C_Timer.After(0.05, function()
+            print(string.format("ONHIDE CLEANUP: confirmed=%s, hasBackup=%s", tostring(colorPickerConfirmed), tostring(colorPickerOriginalColors ~= nil)))
+            
+            -- If not confirmed and backup exists, user cancelled
+            if not colorPickerConfirmed and colorPickerOriginalColors then
+                print("RESTORING ORIGINAL COLORS (USER CANCELLED)")
+                WarbandNexus.db.profile.themeColors = colorPickerOriginalColors
+                
+                if ns.UI_RefreshColors then
+                    ns.UI_RefreshColors()
+                end
+            elseif colorPickerConfirmed then
+                print("COLOR CONFIRMED (OK BUTTON CLICKED)")
+            end
+            
+            -- Clean up
+            colorPickerOriginalColors = nil
+            colorPickerConfirmed = false
+            lastR, lastG, lastB = nil, nil, nil
+        end)
+    end)
+end
+
 --[[
     Initialize configuration
 ]]
@@ -392,6 +680,9 @@ end
     Open the options panel
 ]]
 function WarbandNexus:OpenOptions()
+    -- Install color picker preview hook (once)
+    InstallColorPickerPreviewHook()
+    
     if Settings and Settings.OpenToCategory then
         Settings.OpenToCategory("Warband Nexus")
     else

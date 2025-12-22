@@ -4,27 +4,199 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local WarbandNexus = ns.WarbandNexus
 
 --============================================================================
 -- COLOR CONSTANTS
 --============================================================================
 
--- Modern Color Palette
-local COLORS = {
-    bg = {0.06, 0.06, 0.08, 0.98},
-    bgLight = {0.10, 0.10, 0.12, 1},
-    bgCard = {0.08, 0.08, 0.10, 1},
-    border = {0.20, 0.20, 0.25, 1},
-    borderLight = {0.30, 0.30, 0.38, 1},
-    accent = {0.40, 0.20, 0.58, 1},      -- Deep Epic Purple
-    accentDark = {0.32, 0.16, 0.46, 1},  -- Darker Purple
-    gold = {1.00, 0.82, 0.00, 1},
-    green = {0.30, 0.90, 0.30, 1},
-    red = {0.95, 0.30, 0.30, 1},
-    textBright = {1, 1, 1, 1},
-    textNormal = {0.85, 0.85, 0.85, 1},
-    textDim = {0.55, 0.55, 0.55, 1},
-}
+-- Calculate all theme variations from a master color
+local function CalculateThemeColors(masterR, masterG, masterB)
+    -- Helper: Desaturate color
+    local function Desaturate(r, g, b, amount)
+        local gray = (r + g + b) / 3
+        return r + (gray - r) * amount, 
+               g + (gray - g) * amount, 
+               b + (gray - b) * amount
+    end
+    
+    -- Helper: Adjust brightness
+    local function AdjustBrightness(r, g, b, factor)
+        return math.min(1, r * factor),
+               math.min(1, g * factor),
+               math.min(1, b * factor)
+    end
+    
+    -- Calculate variations and wrap in arrays
+    local darkR, darkG, darkB = AdjustBrightness(masterR, masterG, masterB, 0.7)
+    local borderR, borderG, borderB = Desaturate(masterR * 0.5, masterG * 0.5, masterB * 0.5, 0.6)
+    local activeR, activeG, activeB = AdjustBrightness(masterR, masterG, masterB, 0.5)
+    local hoverR, hoverG, hoverB = AdjustBrightness(masterR, masterG, masterB, 0.6)
+    
+    return {
+        accent = {masterR, masterG, masterB},
+        accentDark = {darkR, darkG, darkB},
+        border = {borderR, borderG, borderB},
+        tabActive = {activeR, activeG, activeB},
+        tabHover = {hoverR, hoverG, hoverB},
+    }
+end
+
+-- Get theme colors from database (with fallbacks)
+local function GetThemeColors()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local themeColors = db and db.themeColors or {}
+    
+    return {
+        accent = themeColors.accent or {0.40, 0.20, 0.58},
+        accentDark = themeColors.accentDark or {0.28, 0.14, 0.41},
+        border = themeColors.border or {0.20, 0.20, 0.25},
+        tabActive = themeColors.tabActive or {0.20, 0.12, 0.30},
+        tabHover = themeColors.tabHover or {0.24, 0.14, 0.35},
+    }
+end
+
+-- Modern Color Palette (Dynamic - updates from database)
+local function GetColors()
+    local theme = GetThemeColors()
+    
+    return {
+        bg = {0.06, 0.06, 0.08, 0.98},
+        bgLight = {0.10, 0.10, 0.12, 1},
+        bgCard = {0.08, 0.08, 0.10, 1},
+        border = {theme.border[1], theme.border[2], theme.border[3], 1},
+        borderLight = {0.30, 0.30, 0.38, 1},
+        accent = {theme.accent[1], theme.accent[2], theme.accent[3], 1},
+        accentDark = {theme.accentDark[1], theme.accentDark[2], theme.accentDark[3], 1},
+        tabActive = {theme.tabActive[1], theme.tabActive[2], theme.tabActive[3], 1},
+        tabHover = {theme.tabHover[1], theme.tabHover[2], theme.tabHover[3], 1},
+        tabInactive = {0.08, 0.08, 0.10, 1},
+        gold = {1.00, 0.82, 0.00, 1},
+        green = {0.30, 0.90, 0.30, 1},
+        red = {0.95, 0.30, 0.30, 1},
+        textBright = {1, 1, 1, 1},
+        textNormal = {0.85, 0.85, 0.85, 1},
+        textDim = {0.55, 0.55, 0.55, 1},
+    }
+end
+
+-- Create initial COLORS table
+local COLORS = GetColors()
+
+-- Refresh COLORS table from database
+local function RefreshColors()
+    print("=== RefreshColors CALLED ===")
+    
+    -- Immediate update
+    local newColors = GetColors()
+    for k, v in pairs(newColors) do
+        COLORS[k] = v
+    end
+    -- Also update the namespace reference
+    ns.UI_COLORS = COLORS
+    
+    print(string.format("New accent color: R=%.2f, G=%.2f, B=%.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
+    
+    -- Update main frame border and header if it exists
+    if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+        local f = WarbandNexus.UI.mainFrame
+        local accentColor = COLORS.accent
+        local borderColor = COLORS.border
+        
+        -- Calculate hex color inline
+        local accentHex = string.format("%02x%02x%02x", accentColor[1] * 255, accentColor[2] * 255, accentColor[3] * 255)
+        
+        print(string.format("Accent hex: %s", accentHex))
+        print(string.format("mainFrame exists: %s", tostring(f ~= nil)))
+        print(string.format("title exists: %s", tostring(f.title ~= nil)))
+        
+        -- Update main title text with new color
+        if f.title then
+            local newText = string.format("|cff%s%s|r", accentHex, "Warband Nexus")
+            f.title:SetText(newText)
+            print(string.format("Title updated to: %s", newText))
+        end
+        
+        -- Update main frame border using COLORS.border
+        if f.SetBackdropBorderColor then
+            f:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
+        end
+        
+        -- Update header background
+        if f.header and f.header.SetBackdropColor then
+            f.header:SetBackdropColor(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], COLORS.accentDark[4] or 1)
+        end
+        
+        -- Update content area border
+        if f.content and f.content.SetBackdropBorderColor then
+            f.content:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
+        end
+        
+        -- Update footer buttons (Scan, Sort, Classic Bank)
+        if f.scanBtn and f.scanBtn.SetBackdropBorderColor then
+            f.scanBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
+        end
+        if f.sortBtn and f.sortBtn.SetBackdropBorderColor then
+            f.sortBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
+        end
+        if f.classicBtn and f.classicBtn.SetBackdropBorderColor then
+            f.classicBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
+        end
+        
+        -- Update main tab buttons (activeBar highlight)
+        if f.tabButtons then
+            local accentColor = COLORS.accent
+            local tabActiveColor = COLORS.tabActive
+            local tabInactiveColor = COLORS.tabInactive
+            local tabHoverColor = COLORS.tabHover
+            
+            for tabKey, btn in pairs(f.tabButtons) do
+                local isActive = f.currentTab == tabKey
+                
+                -- Update background color
+                if isActive then
+                    btn:SetBackdropColor(tabActiveColor[1], tabActiveColor[2], tabActiveColor[3], 1)
+                    btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+                else
+                    btn:SetBackdropColor(tabInactiveColor[1], tabInactiveColor[2], tabInactiveColor[3], 1)
+                    btn:SetBackdropBorderColor(tabInactiveColor[1] * 1.5, tabInactiveColor[2] * 1.5, tabInactiveColor[3] * 1.5, 0.5)
+                end
+                
+                -- Update activeBar (bottom highlight line)
+                if btn.activeBar then
+                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                end
+                
+                -- Update glow
+                if btn.glow then
+                    btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+                end
+            end
+        end
+        
+        -- Update search bar borders
+        if f.persistentSearchBoxes then
+            for _, searchBox in pairs(f.persistentSearchBoxes) do
+                if searchBox and searchBox.searchFrame then
+                    local borderColor = COLORS.accent
+                    searchBox.searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.5)
+                end
+            end
+        end
+        
+        -- Refresh content to update dynamic elements (without infinite loop)
+        if f:IsShown() and WarbandNexus.RefreshUI then
+            print("Calling RefreshUI to update content")
+            WarbandNexus:RefreshUI()
+        end
+        
+        print("=== RefreshColors COMPLETE ===")
+    else
+        print("ERROR: mainFrame not found!")
+        print(string.format("WarbandNexus exists: %s", tostring(WarbandNexus ~= nil)))
+        print(string.format("WarbandNexus.UI exists: %s", tostring(WarbandNexus and WarbandNexus.UI ~= nil)))
+    end
+end
 
 -- Quality colors (hex)
 local QUALITY_COLORS = {
@@ -306,6 +478,12 @@ local function GetQualityHex(quality)
     return QUALITY_COLORS[quality] or "ffffff"
 end
 
+-- Get accent color as hex string
+local function GetAccentHexColor()
+    local c = COLORS.accent
+    return string.format("%02x%02x%02x", c[1] * 255, c[2] * 255, c[3] * 255)
+end
+
 -- Create a card frame (common UI element)
 local function CreateCard(parent, height)
     local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -343,7 +521,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         edgeSize = 1,
     })
     header:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    local headerBorder = COLORS.accent
+    header:SetBackdropBorderColor(headerBorder[1], headerBorder[2], headerBorder[3], 0.5)
     
     -- Expand/Collapse icon (texture-based)
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
@@ -356,7 +535,9 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     else
         expandIcon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
     end
-    expandIcon:SetVertexColor(0.8, 0.6, 1)  -- Purple tint to match theme
+    -- Dynamic theme color tint
+    local iconTint = COLORS.accent
+    expandIcon:SetVertexColor(iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5)
     
     local textAnchor = expandIcon
     local textOffset = 8
@@ -634,8 +815,9 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     local container = CreateFrame("Frame", nil, parent)
     container:SetSize(width, 32)
     
-    -- Background frame with border
+    -- Background frame with border (dynamic colors)
     local searchFrame = CreateFrame("Frame", nil, container, "BackdropTemplate")
+    container.searchFrame = searchFrame  -- Store reference for color updates
     searchFrame:SetAllPoints()
     searchFrame:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -643,7 +825,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         edgeSize = 1,
     })
     searchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    local borderColor = COLORS.accent
+    searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.5)
     
     -- Search icon
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
@@ -719,13 +902,15 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         self:ClearFocus()
     end)
     
-    -- Focus border highlight
+    -- Focus border highlight (dynamic colors)
     searchBox:SetScript("OnEditFocusGained", function(self)
-        searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+        local accentColor = COLORS.accent
+        searchFrame:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
     end)
     
     searchBox:SetScript("OnEditFocusLost", function(self)
-        searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+        local accentColor = COLORS.accent
+        searchFrame:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
     end)
     
     -- Clear function
@@ -783,7 +968,8 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         edgeSize = 2,
     })
     popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    popup:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    local popupBorder = COLORS.accent
+    popup:SetBackdropBorderColor(popupBorder[1], popupBorder[2], popupBorder[3], 1)
     popup:EnableMouse(true)
     
     -- Title
@@ -943,7 +1129,8 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         edgeSize = 1,
     })
     charListFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
-    charListFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    local listBorder = COLORS.accent
+    charListFrame:SetBackdropBorderColor(listBorder[1], listBorder[2], listBorder[3], 1)
     charListFrame:Hide()  -- Initially hidden
     
     -- Scroll frame for character list (if many characters)
@@ -1074,6 +1261,7 @@ end
 --============================================================================
 
 ns.UI_GetQualityHex = GetQualityHex
+ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_CreateCard = CreateCard
 ns.UI_FormatGold = FormatGold
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
@@ -1084,6 +1272,8 @@ ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
 ns.UI_CreateSearchBox = CreateSearchBox
 ns.UI_GetCurrencySearchText = GetCurrencySearchText
+ns.UI_RefreshColors = RefreshColors
+ns.UI_CalculateThemeColors = CalculateThemeColors
 
 -- Frame pooling exports
 ns.UI_AcquireItemRow = AcquireItemRow

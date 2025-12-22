@@ -11,12 +11,14 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Import shared UI components
+-- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local FormatGold = ns.UI_FormatGold
 local DrawEmptyState = ns.UI_DrawEmptyState
-local COLORS = ns.UI_COLORS
+local function GetCOLORS()
+    return ns.UI_COLORS
+end
 
 -- Performance: Local function references
 local format = string.format
@@ -247,7 +249,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    titleText:SetText("|cffa335eeCurrency Tracker|r")
+    -- Dynamic theme color for title
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
@@ -383,7 +389,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
         charHeader:SetWidth(width)
         charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-        charHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)  -- Fixed to match Items/Storage
+        local COLORS = GetCOLORS()
+        local borderColor = COLORS.accent
+        charHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
         yOffset = yOffset + HEADER_SPACING
         
@@ -463,7 +471,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         warHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         warHeader:SetWidth(width - charIndent)
                         warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        warHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                        local COLORS = GetCOLORS()
+                        local borderColor = COLORS.accent
+                        warHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -499,7 +509,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                 s3Header:SetPoint("TOPLEFT", 10 + warIndent, -yOffset)
                                 s3Header:SetWidth(width - warIndent)
                                 s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                s3Header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                                local COLORS = GetCOLORS()
+                                local borderColor = COLORS.accent
+                                s3Header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                 
                                 yOffset = yOffset + HEADER_SPACING
                                 
@@ -578,7 +590,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         header:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         header:SetWidth(width - charIndent)
                         header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                        local COLORS = GetCOLORS()
+                        local borderColor = COLORS.accent
+                        header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -641,7 +655,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         expHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         expHeader:SetWidth(width - charIndent)
                         expHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        expHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                        local COLORS = GetCOLORS()
+                        local borderColor = COLORS.accent
+                        expHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -696,7 +712,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                             catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                             catHeader:SetWidth(width - expIndent)
                                             catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                            catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                                            local COLORS = GetCOLORS()
+                                            local borderColor = COLORS.accent
+                                            catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                             
                                             yOffset = yOffset + HEADER_SPACING
                                             
@@ -731,7 +749,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                     seasonHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                     seasonHeader:SetWidth(width - expIndent)
                                     seasonHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                    seasonHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                                    local COLORS = GetCOLORS()
+                                    local borderColor = COLORS.accent
+                                    seasonHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                     
                                     yOffset = yOffset + HEADER_SPACING
                                     
@@ -770,7 +790,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                                 catHeader:SetPoint("TOPLEFT", 10 + seasonIndent, -yOffset)
                                                 catHeader:SetWidth(width - seasonIndent)
                                                 catHeader:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
-                                                catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                                                local COLORS = GetCOLORS()
+                                                local borderColor = COLORS.accent
+                                                catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                                 
                                                 yOffset = yOffset + HEADER_SPACING
                                                 
@@ -818,7 +840,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                         catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                         catHeader:SetWidth(width - expIndent)
                                         catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                        catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
+                                        local COLORS = GetCOLORS()
+                                        local borderColor = COLORS.accent
+                                        catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                         
                                         yOffset = yOffset + HEADER_SPACING
                                         

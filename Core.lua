@@ -122,6 +122,15 @@ local defaults = {
         
         -- Display settings
         showItemLevel = true,
+        
+        -- Theme Colors (RGB 0-1 format) - All calculated from master color
+        themeColors = {
+            accent = {0.40, 0.20, 0.58},      -- Master theme color (purple)
+            accentDark = {0.28, 0.14, 0.41},  -- Darker variation (0.7x)
+            border = {0.20, 0.20, 0.25},      -- Desaturated border
+            tabActive = {0.20, 0.12, 0.30},   -- Active tab background (0.5x)
+            tabHover = {0.24, 0.14, 0.35},    -- Hover tab background (0.6x)
+        },
         showItemCount = true,
         
         -- Gold settings
@@ -211,6 +220,18 @@ function WarbandNexus:OnInitialize()
     self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
     
+    -- Ensure theme colors are fully calculated (for migration from old versions)
+    if self.db.profile.themeColors then
+        local colors = self.db.profile.themeColors
+        -- If missing calculated variations, regenerate them
+        if not colors.accentDark or not colors.tabHover then
+            if ns.UI_CalculateThemeColors and colors.accent then
+                local accent = colors.accent
+                self.db.profile.themeColors = ns.UI_CalculateThemeColors(accent[1], accent[2], accent[3])
+            end
+        end
+    end
+    
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
@@ -234,6 +255,11 @@ end
 function WarbandNexus:OnEnable()
     if not self.db.profile.enabled then
         return
+    end
+    
+    -- Refresh colors from database on enable
+    if ns.UI_RefreshColors then
+        ns.UI_RefreshColors()
     end
     
     -- Initialize conflict queue and guards

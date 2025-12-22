@@ -9,8 +9,10 @@ local WarbandNexus = ns.WarbandNexus
 -- Feature Flags
 local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
 
--- Import shared UI components
-local COLORS = ns.UI_COLORS
+-- Import shared UI components (always get fresh reference)
+local function GetCOLORS()
+    return ns.UI_COLORS
+end
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -66,7 +68,11 @@ function WarbandNexus:DrawItemList(parent)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    titleText:SetText("|cffa335eeBank Items|r")
+    -- Dynamic theme color for title
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Bank Items|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
@@ -83,75 +89,168 @@ function WarbandNexus:DrawItemList(parent)
     tabFrame:SetSize(width, 32)
     tabFrame:SetPoint("TOPLEFT", 8, -yOffset)
     
+    -- Get theme colors
+    local COLORS = GetCOLORS()
+    local tabActiveColor = COLORS.tabActive
+    local tabInactiveColor = COLORS.tabInactive
+    local accentColor = COLORS.accent
+    
     -- PERSONAL BANK BUTTON (First/Left)
-    local personalBtn = CreateFrame("Button", nil, tabFrame)
+    local personalBtn = CreateFrame("Button", nil, tabFrame, "BackdropTemplate")
     personalBtn:SetSize(130, 28)
     personalBtn:SetPoint("LEFT", 0, 0)
     
-    local personalBg = personalBtn:CreateTexture(nil, "BACKGROUND")
-    personalBg:SetAllPoints()
+    -- Add backdrop for border
+    personalBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    
     local isPersonalActive = currentItemsSubTab == "personal"
-    personalBg:SetColorTexture(isPersonalActive and 0.20 or 0.08, isPersonalActive and 0.12 or 0.08, isPersonalActive and 0.30 or 0.10, 1)
+    personalBtn:SetBackdropColor(
+        isPersonalActive and tabActiveColor[1] or tabInactiveColor[1],
+        isPersonalActive and tabActiveColor[2] or tabInactiveColor[2],
+        isPersonalActive and tabActiveColor[3] or tabInactiveColor[3],
+        1
+    )
+    -- Set border color
+    if isPersonalActive then
+        personalBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+    else
+        personalBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+    end
+    
+    -- Remove old texture background (now using backdrop)
+    local personalBg = personalBtn  -- Keep reference name for compatibility
     
     local personalText = personalBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     personalText:SetPoint("CENTER")
-    personalText:SetText(isPersonalActive and "|cff88ff88Personal Bank|r" or "|cff888888Personal Bank|r")
+    personalText:SetText("Personal Bank")
+    personalText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     personalBtn:SetScript("OnClick", function()
         ns.UI_SetItemsSubTab("personal")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
-    personalBtn:SetScript("OnEnter", function(self) personalBg:SetColorTexture(0.25, 0.15, 0.35, 1) end)
+    personalBtn:SetScript("OnEnter", function(self)
+        local hoverR = accentColor[1] * 0.6 + 0.15
+        local hoverG = accentColor[2] * 0.6 + 0.15
+        local hoverB = accentColor[3] * 0.6 + 0.15
+        self:SetBackdropColor(hoverR, hoverG, hoverB, 1)
+        self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.8)
+    end)
     personalBtn:SetScript("OnLeave", function(self)
         local active = ns.UI_GetItemsSubTab() == "personal"
-        personalBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
+        local c = active and tabActiveColor or tabInactiveColor
+        self:SetBackdropColor(c[1], c[2], c[3], 1)
+        if active then
+            self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+        else
+            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        end
     end)
     
     -- WARBAND BANK BUTTON (Second/Right)
-    local warbandBtn = CreateFrame("Button", nil, tabFrame)
+    local warbandBtn = CreateFrame("Button", nil, tabFrame, "BackdropTemplate")
     warbandBtn:SetSize(130, 28)
     warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
     
-    local warbandBg = warbandBtn:CreateTexture(nil, "BACKGROUND")
-    warbandBg:SetAllPoints()
+    -- Add backdrop for border
+    warbandBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    
     local isWarbandActive = currentItemsSubTab == "warband"
-    warbandBg:SetColorTexture(isWarbandActive and 0.20 or 0.08, isWarbandActive and 0.12 or 0.08, isWarbandActive and 0.30 or 0.10, 1)
+    warbandBtn:SetBackdropColor(
+        isWarbandActive and tabActiveColor[1] or tabInactiveColor[1],
+        isWarbandActive and tabActiveColor[2] or tabInactiveColor[2],
+        isWarbandActive and tabActiveColor[3] or tabInactiveColor[3],
+        1
+    )
+    -- Set border color
+    if isWarbandActive then
+        warbandBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+    else
+        warbandBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+    end
+    
+    -- Remove old texture background (now using backdrop)
+    local warbandBg = warbandBtn  -- Keep reference name for compatibility
     
     local warbandText = warbandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     warbandText:SetPoint("CENTER")
-    warbandText:SetText(isWarbandActive and "|cffa335eeWarband Bank|r" or "|cff888888Warband Bank|r")
+    warbandText:SetText("Warband Bank")
+    warbandText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     warbandBtn:SetScript("OnClick", function()
         ns.UI_SetItemsSubTab("warband")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
-    warbandBtn:SetScript("OnEnter", function(self) warbandBg:SetColorTexture(0.25, 0.15, 0.35, 1) end)
+    warbandBtn:SetScript("OnEnter", function(self)
+        local hoverR = accentColor[1] * 0.6 + 0.15
+        local hoverG = accentColor[2] * 0.6 + 0.15
+        local hoverB = accentColor[3] * 0.6 + 0.15
+        self:SetBackdropColor(hoverR, hoverG, hoverB, 1)
+        self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.8)
+    end)
     warbandBtn:SetScript("OnLeave", function(self) 
         local active = ns.UI_GetItemsSubTab() == "warband"
-        warbandBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
+        local c = active and tabActiveColor or tabInactiveColor
+        self:SetBackdropColor(c[1], c[2], c[3], 1)
+        if active then
+            self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+        else
+            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        end
     end)
     
     -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
     if ENABLE_GUILD_BANK then
-        local guildBtn = CreateFrame("Button", nil, tabFrame)
+        local guildBtn = CreateFrame("Button", nil, tabFrame, "BackdropTemplate")
         guildBtn:SetSize(130, 28)
         guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
         
-        local guildBg = guildBtn:CreateTexture(nil, "BACKGROUND")
-        guildBg:SetAllPoints()
+        -- Add backdrop for border
+        guildBtn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        
         local isGuildActive = currentItemsSubTab == "guild"
-        guildBg:SetColorTexture(isGuildActive and 0.20 or 0.08, isGuildActive and 0.12 or 0.08, isGuildActive and 0.30 or 0.10, 1)
+        guildBtn:SetBackdropColor(
+            isGuildActive and tabActiveColor[1] or tabInactiveColor[1],
+            isGuildActive and tabActiveColor[2] or tabInactiveColor[2],
+            isGuildActive and tabActiveColor[3] or tabInactiveColor[3],
+            1
+        )
+        -- Set border color
+        if isGuildActive then
+            guildBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+        else
+            guildBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        end
+        
+        -- Remove old texture background (now using backdrop)
+        local guildBg = guildBtn  -- Keep reference name for compatibility
         
         local guildText = guildBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         guildText:SetPoint("CENTER")
-        guildText:SetText(isGuildActive and "|cff00ff00Guild Bank|r" or "|cff888888Guild Bank|r")
+        guildText:SetText("Guild Bank")
+        guildText:SetTextColor(1, 1, 1)  -- Fixed white color
         
         -- Check if player is in a guild
         local isInGuild = IsInGuild()
         if not isInGuild then
             guildBtn:Disable()
-            guildText:SetText("|cff444444Guild Bank|r")
-            guildBg:SetColorTexture(0.05, 0.05, 0.05, 1)
+            guildBtn:SetAlpha(0.5)
+            guildText:SetTextColor(0.4, 0.4, 0.4)  -- Dim gray when disabled
         end
         
         guildBtn:SetScript("OnClick", function()
@@ -164,12 +263,22 @@ function WarbandNexus:DrawItemList(parent)
         end)
         guildBtn:SetScript("OnEnter", function(self) 
             if isInGuild then
-                guildBg:SetColorTexture(0.25, 0.15, 0.35, 1)
+                local hoverR = accentColor[1] * 0.6 + 0.15
+                local hoverG = accentColor[2] * 0.6 + 0.15
+                local hoverB = accentColor[3] * 0.6 + 0.15
+                self:SetBackdropColor(hoverR, hoverG, hoverB, 1)
+                self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.8)
             end
         end)
         guildBtn:SetScript("OnLeave", function(self) 
             local active = ns.UI_GetItemsSubTab() == "guild"
-            guildBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
+            local c = active and tabActiveColor or tabInactiveColor
+            self:SetBackdropColor(c[1], c[2], c[3], 1)
+            if active then
+                self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+            else
+                self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            end
         end)
     end -- ENABLE_GUILD_BANK
     

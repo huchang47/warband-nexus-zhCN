@@ -6,7 +6,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Import shared UI components
+-- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local GetItemTypeName = ns.UI_GetItemTypeName
@@ -14,6 +14,9 @@ local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
+local function GetCOLORS()
+    return ns.UI_COLORS
+end
 
 -- Import pooling functions
 local AcquireStorageRow = ns.UI_AcquireStorageRow
@@ -57,7 +60,11 @@ function WarbandNexus:DrawStorageTab(parent)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    titleText:SetText("|cffa335eeStorage Browser|r")
+    -- Dynamic theme color for title
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Storage Browser|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
