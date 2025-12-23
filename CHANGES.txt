@@ -1,23 +1,44 @@
 ═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 1.0.3 (22.12.2025)
+  WARBAND NEXUS - Version 1.0.4 (23.12.2025)
 ═══════════════════════════════════════════════════════════════════════════
 
 NEW FEATURES
 ────────────
-• Class icons now show next to character names in Currency tab
-• Currency amounts display with thousand separators (e.g., 33.177)
-• Season 3 currencies properly organized under "The War Within"
+• Customizable theme colors
+  - Choose your own accent color from the color picker
+  - Personalize the addon's appearance to match your UI
+  - Preview colors instantly before applying
+
+• Character management
+  - Delete character data directly from settings
+  - Remove old characters you no longer play
+  - Keep your addon organized and clean
 
 IMPROVEMENTS
 ────────────
-• Much faster UI performance
-• Reduced memory usage when viewing currencies
-• All tabs now use consistent purple theme
-• Better currency categorization and filtering
+• ElvUI compatibility greatly improved
+  - Addon now detects ElvUI Bags module more reliably
+  - Only disables the Bags module, not the entire ElvUI addon
+  - Conflict choice is remembered correctly
+  - If you manually re-enable ElvUI Bags, addon will ask your preference again
+
+• Combat safety added
+  - You cannot move or use items during combat
+  - Addon window automatically hides when you enter combat
+  - Prevents game errors and ensures smooth gameplay
+
+• Better performance
+  - Removed unnecessary background messages
+  - Faster and cleaner code execution
+  - Reduced memory usage
+
+• Simpler commands
+  - Type /wn to open the addon (no more typing /wn show)
+  - Type /wn help to see available commands
+  - Only 3 main commands: /wn, /wn options, /wn cleanup
 
 BUG FIXES
 ─────────
-• Fixed currency display issues when expanding multiple sections
-• Fixed character headers not responding to clicks
-• Fixed spacing gaps in currency list
-• Fixed visual glitches after scrolling
+• Fixed reload button causing "blocked action" error
+• Fixed ElvUI Bags module not disabling properly
+• Fixed conflict popup appearing repeatedly after resolving
