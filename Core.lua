@@ -1386,8 +1386,13 @@ function WarbandNexus:ShowReloadPopup()
         button1 = "Reload",
         button2 = "Later",
         OnAccept = function()
-            -- CRITICAL: Call ReloadUI() directly from popup button (not protected!)
-            ReloadUI()
+            -- Use C_UI.Reload() (not protected, safe for addons in TWW 11.0+)
+            if C_UI and C_UI.Reload then
+                C_UI.Reload()
+            else
+                -- Fallback for older clients (may cause taint warning)
+                ReloadUI()
+            end
         end,
         timeout = 0,
         whileDead = true,
