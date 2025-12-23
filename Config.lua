@@ -179,15 +179,30 @@ local options = {
                 local conflictingAddons = WarbandNexus:DetectBankAddonConflicts()
                 if conflictingAddons and #conflictingAddons > 0 then
                     local conflictingAddon = conflictingAddons[1]  -- Show first conflict
-                    return string.format(
-                        "|cffff9900⚠ Bank Addon Conflict:|r\n\n" ..
-                        "You have |cff00ccff%s|r installed, which conflicts with Warband Nexus's bank replacement feature.\n\n" ..
-                        "|cffffffffTo use both addons together:|r\n" ..
-                        "• Disable %s's bank module in its settings\n" ..
-                        "• OR keep this setting OFF and use %s for your bank UI\n\n" ..
-                        "|cff00ff00Note:|r Warband Nexus will still track and cache your items regardless of this setting!\n",
-                        conflictingAddon, conflictingAddon, conflictingAddon
-                    )
+                    
+                    -- ElvUI special message
+                    if conflictingAddon == "ElvUI" then
+                        return string.format(
+                            "|cffff9900⚠ Bank Addon Conflict:|r\n\n" ..
+                            "You have |cff00ccff%s|r installed, which conflicts with Warband Nexus's bank replacement feature.\n\n" ..
+                            "|cffffffffTo use both addons together:|r\n" ..
+                            "• Disable ElvUI's |cffaaaaaa(Bags module only)|r in its settings\n" ..
+                            "• OR keep this setting OFF and use ElvUI for your bank UI\n\n" ..
+                            "|cff00ff00Note:|r If you choose Warband Nexus, only ElvUI's Bags module will be disabled,\n" ..
+                            "not the entire ElvUI addon. Warband Nexus will still track and cache your items regardless!\n",
+                            conflictingAddon
+                        )
+                    else
+                        return string.format(
+                            "|cffff9900⚠ Bank Addon Conflict:|r\n\n" ..
+                            "You have |cff00ccff%s|r installed, which conflicts with Warband Nexus's bank replacement feature.\n\n" ..
+                            "|cffffffffTo use both addons together:|r\n" ..
+                            "• Disable %s's bank module in its settings\n" ..
+                            "• OR keep this setting OFF and use %s for your bank UI\n\n" ..
+                            "|cff00ff00Note:|r Warband Nexus will still track and cache your items regardless of this setting!\n",
+                            conflictingAddon, conflictingAddon, conflictingAddon
+                        )
+                    end
                 else
                     return ""
                 end
