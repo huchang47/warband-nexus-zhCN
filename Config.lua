@@ -172,6 +172,69 @@ local options = {
             get = function() return WarbandNexus.db.profile.replaceDefaultBank ~= false end,
             set = function(_, value) WarbandNexus.db.profile.replaceDefaultBank = value end,
         },
+        bankModuleEnabled = {
+            order = 25.5,
+            type = "toggle",
+            name = "Enable Bank UI Features",
+            desc = "Control whether Warband Nexus replaces the default bank UI. When disabled, you can use other bank addons (Bagnon, ElvUI, etc.) without conflicts.\n\n|cff00ff00Data caching continues regardless of this setting.|r\n\n|cffff9900Requires /reload to take effect.|r",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.bankModuleEnabled ~= false end,
+            set = function(_, value)
+                local wasEnabled = WarbandNexus.db.profile.bankModuleEnabled
+                WarbandNexus.db.profile.bankModuleEnabled = value
+                
+                if value and not wasEnabled then
+                    -- User is re-enabling bank module
+                    -- Smart toggle: Disable conflicting addons that were previously chosen
+                    local toggledAddons = WarbandNexus.db.profile.toggledAddons or {}
+                    local needsReload = false
+                    
+                    for addonName, previousState in pairs(toggledAddons) do
+                        if previousState == "enabled" then
+                            -- User previously chose this addon, now disable it
+                            local success = WarbandNexus:DisableConflictingBankModule(addonName)
+                            if success then
+                                needsReload = true
+                                WarbandNexus.db.profile.toggledAddons[addonName] = "disabled"
+                            end
+                        end
+                    end
+                    
+                    -- Reset conflict choices to force re-selection if needed
+                    WarbandNexus.db.profile.bankConflictChoices = {}
+                    
+                    if needsReload then
+                        WarbandNexus:Print("|cff00ff00Bank UI enabled. Conflicting addons will be disabled.|r")
+                        WarbandNexus:ShowReloadPopup()
+                    else
+                        WarbandNexus:Print("|cff00ff00Bank UI features enabled.|r Use /reload to apply changes.")
+                    end
+                elseif not value then
+                    -- User is disabling bank module
+                    -- Smart toggle: Re-enable conflicting addons that were disabled
+                    local toggledAddons = WarbandNexus.db.profile.toggledAddons or {}
+                    local needsReload = false
+                    
+                    for addonName, previousState in pairs(toggledAddons) do
+                        if previousState == "disabled" then
+                            -- We disabled this addon, now re-enable it
+                            local success = WarbandNexus:EnableConflictingBankModule(addonName)
+                            if success then
+                                needsReload = true
+                                WarbandNexus.db.profile.toggledAddons[addonName] = "enabled"
+                            end
+                        end
+                    end
+                    
+                    if needsReload then
+                        WarbandNexus:Print("|cffffaa00Bank UI disabled. Previous addons will be re-enabled.|r")
+                        WarbandNexus:ShowReloadPopup()
+                    else
+                        WarbandNexus:Print("|cffffaa00Bank UI features disabled.|r You can now use other bank addons. Use /reload to apply changes.")
+                    end
+                end
+            end,
+        },
         bankAddonConflict = {
             order = 26,
             type = "description",

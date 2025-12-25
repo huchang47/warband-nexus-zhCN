@@ -109,11 +109,15 @@ local defaults = {
         -- Bank addon conflict resolution (per-addon choices)
         bankConflictChoices = {},
         
+        -- Track which addons were toggled by user's choice
+        toggledAddons = {},  -- { ["ElvUI"] = "disabled", ["Bagnon"] = "enabled" }
+        
         -- Behavior settings
         autoScan = true,           -- Auto-scan when bank opens
         autoOpenWindow = true,     -- Auto-open addon window when bank opens
         autoSaveChanges = true,    -- Live sync while bank is open
         replaceDefaultBank = true, -- Replace default bank UI with addon
+        bankModuleEnabled = true,  -- Enable bank UI replacement features (conflict checks, UI suppression, etc.)
         debugMode = false,         -- Debug logging (verbose)
         
         -- Currency settings
@@ -257,18 +261,29 @@ function WarbandNexus:OnEnable()
         return
     end
     
+    -- Reset session-only flags
+    self.classicModeThisSession = false
+    
     -- Refresh colors from database on enable
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
     end
     
-    -- CRITICAL: Check for addon conflicts immediately on enable
+    -- CRITICAL: Check for addon conflicts immediately on enable (only if bank module enabled)
     -- This runs on both initial login AND /reload
     -- Detect if user re-enabled conflicting addons/modules
     C_Timer.After(0.5, function()
         if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.profile then
             return
         end
+        
+        -- Skip conflict detection if bank module is disabled
+        if not WarbandNexus.db.profile.bankModuleEnabled then
+            return
+        end
+        
+        -- Check if there are existing conflict choices
+        local hasConflictChoices = next(WarbandNexus.db.profile.bankConflictChoices) ~= nil
         
         -- Detect all currently conflicting addons
         local conflicts = WarbandNexus:DetectBankAddonConflicts()
@@ -286,13 +301,16 @@ function WarbandNexus:OnEnable()
             end
         end
         
-        -- ALWAYS call CheckBankConflictsOnLogin (even if no conflicts now)
-        -- It will handle filtering and popup display
-        C_Timer.After(1, function()
-            if WarbandNexus and WarbandNexus.CheckBankConflictsOnLogin then
-                WarbandNexus:CheckBankConflictsOnLogin()
-            end
-        end)
+        -- Call CheckBankConflictsOnLogin if:
+        -- 1. No choices exist yet (fresh enable or choices were reset)
+        -- 2. OR conflicts detected that need resolution
+        if not hasConflictChoices or (conflicts and #conflicts > 0) then
+            C_Timer.After(1, function()
+                if WarbandNexus and WarbandNexus.CheckBankConflictsOnLogin then
+                    WarbandNexus:CheckBankConflictsOnLogin()
+                end
+            end)
+        end
     end)
     
     -- Initialize conflict queue and guards
@@ -901,10 +919,27 @@ end
 function WarbandNexus:OnBankOpened()
     self.bankIsOpen = true
     
+    -- Check if in Classic Mode for this session
+    if self.classicModeThisSession then
+        -- Don't suppress Blizzard UI
+        -- Don't auto-open Warband Nexus
+        -- Just scan data in background
+        if self.db.profile.autoScan then
+            if self.ScanPersonalBank then
+                self:ScanPersonalBank()
+            end
+        end
+        return
+    end
+    
+    -- Check if bank module UI features are enabled
+    local bankModuleEnabled = self.db.profile.bankModuleEnabled
+    
     -- Check if ANY conflict addon was chosen as "useOther" (background mode)
     local useOtherAddon = self:IsUsingOtherBankAddon()
     
-    if not useOtherAddon then
+    -- Only manage bank UI if module is enabled AND no other addon is in use
+    if bankModuleEnabled and not useOtherAddon then
         -- Normal mode: WarbandNexus manages bank UI
         
         -- CRITICAL: Suppress Blizzard's bank frame immediately
@@ -958,9 +993,9 @@ function WarbandNexus:OnBankOpened()
             end
         end
         
-        -- CRITICAL: Check for addon conflicts when bank opens
+        -- CRITICAL: Check for addon conflicts when bank opens (only if module enabled)
         -- This catches runtime changes (user opened ElvUI bags settings, re-enabled module, etc.)
-        if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.bankConflictChoices then
+        if WarbandNexus.db.profile.bankModuleEnabled and WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.bankConflictChoices then
             local conflicts = WarbandNexus:DetectBankAddonConflicts()
             if conflicts and #conflicts > 0 then
                 -- Check each conflict to see if user previously chose "useWarband"
@@ -988,9 +1023,9 @@ function WarbandNexus:OnBankOpened()
             end
         end
         
-        -- Auto-open window ONLY if using WarbandNexus mode
+        -- Auto-open window ONLY if bank module enabled AND using WarbandNexus mode
         local useOther = WarbandNexus:IsUsingOtherBankAddon()
-        if not useOther and WarbandNexus.db.profile.autoOpenWindow ~= false then
+        if WarbandNexus.db.profile.bankModuleEnabled and not useOther and WarbandNexus.db.profile.autoOpenWindow ~= false then
             if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
                 WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
             end
@@ -1273,6 +1308,11 @@ function WarbandNexus:CheckBankConflictsOnLogin()
         return
     end
     
+    -- Skip if bank module is disabled
+    if not self.db.profile.bankModuleEnabled then
+        return
+    end
+    
     -- Detect all conflicting addons
     local conflicts = self:DetectBankAddonConflicts()
     
@@ -1348,15 +1388,18 @@ function WarbandNexus:ShowBankAddonConflictWarning(addonName)
         button2 = "Use " .. addonName,
         OnAccept = function(self)
             -- Button 1: User wants to use Warband Nexus - disable conflicting addon
-            WarbandNexus.db.profile.bankConflictChoices[self.data] = "useWarband"
+            local addonName = self.data
+            WarbandNexus.db.profile.bankConflictChoices[addonName] = "useWarband"
             
-            local success, message = WarbandNexus:DisableConflictingBankModule(self.data)
+            local success, message = WarbandNexus:DisableConflictingBankModule(addonName)
             if not success then
                 WarbandNexus:Print(message)
             end
             
             -- Mark that we need reload (if addon was disabled)
             if success then
+                -- Track that we disabled this addon
+                WarbandNexus.db.profile.toggledAddons[addonName] = "disabled"
                 WarbandNexus._needsReload = true
                 WarbandNexus:ClearConflictCache()
             end
@@ -1378,10 +1421,22 @@ function WarbandNexus:ShowBankAddonConflictWarning(addonName)
         end,
         OnCancel = function(self)
             -- Button 2: User wants to keep the other addon
-            WarbandNexus.db.profile.bankConflictChoices[self.data] = "useOther"
+            local addonName = self.data
+            WarbandNexus.db.profile.bankConflictChoices[addonName] = "useOther"
+            
+            -- NEW: Automatically disable bank module since user chose other addon
+            WarbandNexus.db.profile.bankModuleEnabled = false
+            
+            -- Track that user chose this addon (it's already enabled)
+            WarbandNexus.db.profile.toggledAddons[addonName] = "enabled"
+            
+            WarbandNexus:Print(string.format(
+                "|cff00ff00Using %s for bank UI.|r Warband Nexus will run in background mode (data tracking only).",
+                addonName
+            ))
             
             -- Enable the conflicting addon (make sure it's active)
-            local success, message = WarbandNexus:EnableConflictingBankModule(self.data)
+            local success, message = WarbandNexus:EnableConflictingBankModule(addonName)
             if success then
                 WarbandNexus._needsReload = true
             end

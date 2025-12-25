@@ -731,14 +731,22 @@ function WarbandNexus:CreateMainWindow()
     classicBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
     classicBtn:SetScript("OnClick", function()
         if WarbandNexus.bankIsOpen then
-            -- Enter Classic Bank mode
-            WarbandNexus.classicBankMode = true
+            -- Enter Classic Bank mode for this session
+            WarbandNexus.classicModeThisSession = true
             
-            -- Close addon window
+            -- Restore Blizzard bank UI
+            WarbandNexus:RestoreDefaultBankFrame()
+            
+            -- Hide Warband Nexus window
             WarbandNexus:HideMainWindow()
             
-            -- Restore classic bank UI to default position
-            WarbandNexus:RestoreDefaultBankFrame()
+            -- Show temporary message
+            WarbandNexus:Print("|cff00ccffClassic Bank Mode|r - Using Blizzard UI this session. Use /reload to return to Warband Nexus.")
+            
+            -- Open bags
+            if OpenAllBags then
+                OpenAllBags()
+            end
         else
             WarbandNexus:Print("|cffff6600You must be near a banker.|r")
         end
@@ -755,59 +763,8 @@ function WarbandNexus:CreateMainWindow()
     classicBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     f.classicBtn = classicBtn
     
-    local sortBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
-    sortBtn:SetSize(55, 24)
-    sortBtn:SetPoint("RIGHT", classicBtn, "LEFT", -5, 0)
-    sortBtn:SetText("Sort")
-    sortBtn:SetBackdrop({
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    sortBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
-    sortBtn:SetScript("OnClick", function()
-        if WarbandNexus.bankIsOpen then
-            WarbandNexus:SortWarbandBank()
-        else
-            WarbandNexus:Print("|cffff6600Bank must be open to sort!|r")
-        end
-    end)
-    f.sortBtn = sortBtn
-    
-    local scanBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
-    scanBtn:SetSize(55, 24)
-    scanBtn:SetPoint("RIGHT", sortBtn, "LEFT", -5, 0)
-    scanBtn:SetText("Scan")
-    scanBtn:SetBackdrop({
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    scanBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
-    scanBtn:SetScript("OnClick", function()
-        local scannedAny = false
-        
-        if WarbandNexus.bankIsOpen then
-            WarbandNexus:ScanPersonalBank()
-            scannedAny = true
-        end
-        
-        if WarbandNexus:IsWarbandBankOpen() then
-            WarbandNexus:ScanWarbandBank()
-            scannedAny = true
-        end
-        
-        if scannedAny then
-            WarbandNexus:PopulateContent()
-        else
-            WarbandNexus:Print("|cffff6600Bank is closed - showing cached data.|r")
-        end
-    end)
-    f.scanBtn = scanBtn
-    
-    -- Up-to-Date status label (left of Scan button)
-    local scanStatus = footer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    scanStatus:SetPoint("RIGHT", scanBtn, "LEFT", -10, 0)
-    scanStatus:SetText("")
-    f.scanStatus = scanStatus
+    -- Scan and Sort buttons removed - no longer needed
+    -- Scan is automatic (autoScan setting), Sort is automatic (items auto-sorted alphabetically)
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then
@@ -1066,21 +1023,18 @@ function WarbandNexus:UpdateButtonStates()
     
     local bankOpen = self.bankIsOpen
     
-    -- Footer buttons
-    if mainFrame.sortBtn then
-        mainFrame.sortBtn:SetEnabled(bankOpen)
-        mainFrame.sortBtn:SetAlpha(bankOpen and 1 or 0.5)
-    end
-    
-    if mainFrame.scanBtn then
-        mainFrame.scanBtn:SetEnabled(bankOpen)
-        mainFrame.scanBtn:SetAlpha(bankOpen and 1 or 0.5)
-    end
+    -- Footer buttons (Scan and Sort removed - not needed)
     
     if mainFrame.classicBtn then
-        -- Classic Bank butonu her zaman aktif (bank off-screen olduğu için)
-        mainFrame.classicBtn:SetEnabled(true)
-        mainFrame.classicBtn:SetAlpha(1)
+        -- Only show Classic Bank button if bank module is enabled
+        if self.db.profile.bankModuleEnabled then
+            mainFrame.classicBtn:Show()
+            mainFrame.classicBtn:SetEnabled(true)
+            mainFrame.classicBtn:SetAlpha(1)
+        else
+            -- Hide when bank module disabled (user is using another addon)
+            mainFrame.classicBtn:Hide()
+        end
     end
 end
 
@@ -1157,6 +1111,11 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 -- This is CRITICAL for right-click item deposits to go to correct bank!
 --============================================================================
 function WarbandNexus:SyncBankTab()
+    -- Don't sync if bank module is disabled
+    if not self.db.profile.bankModuleEnabled then
+        return
+    end
+    
     -- Don't sync classic UI tabs if user chose to use another addon
     if self:IsUsingOtherBankAddon() then
         return

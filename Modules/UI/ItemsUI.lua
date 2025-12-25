@@ -79,6 +79,92 @@ function WarbandNexus:DrawItemList(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Browse and manage your Warband and Personal bank")
     
+    -- Bank Module Enable/Disable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    enableCheckbox:SetChecked(self.db.profile.bankModuleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable Bank UI")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        local wasEnabled = self.db.profile.bankModuleEnabled
+        self.db.profile.bankModuleEnabled = enabled
+        
+        if enabled and not wasEnabled then
+            -- User is re-enabling bank module
+            -- Smart toggle: Disable conflicting addons that were previously chosen
+            local toggledAddons = self.db.profile.toggledAddons or {}
+            local needsReload = false
+            
+            for addonName, previousState in pairs(toggledAddons) do
+                if previousState == "enabled" then
+                    -- User previously chose this addon, now disable it
+                    local success = self:DisableConflictingBankModule(addonName)
+                    if success then
+                        needsReload = true
+                        self.db.profile.toggledAddons[addonName] = "disabled"
+                    end
+                end
+            end
+            
+            -- Reset conflict choices
+            self.db.profile.bankConflictChoices = {}
+            
+            if needsReload then
+                self:Print("|cff00ff00Bank UI enabled. Conflicting addons will be disabled.|r")
+                self:ShowReloadPopup()
+            else
+                self:Print("|cff00ff00Bank UI features enabled.|r Use /reload to apply changes.")
+            end
+        elseif not enabled then
+            -- User is disabling bank module
+            -- Smart toggle: Re-enable conflicting addons that were disabled
+            local toggledAddons = self.db.profile.toggledAddons or {}
+            local needsReload = false
+            
+            for addonName, previousState in pairs(toggledAddons) do
+                if previousState == "disabled" then
+                    -- We disabled this addon, now re-enable it
+                    local success = self:EnableConflictingBankModule(addonName)
+                    if success then
+                        needsReload = true
+                        self.db.profile.toggledAddons[addonName] = "enabled"
+                    end
+                end
+            end
+            
+            if needsReload then
+                self:Print("|cffffaa00Bank UI disabled. Previous addons will be re-enabled.|r")
+                self:ShowReloadPopup()
+            else
+                self:Print("|cffffaa00Bank UI features disabled.|r You can now use other bank addons. Use /reload to apply changes.")
+            end
+        end
+        
+        -- Refresh UI to reflect changes
+        self:RefreshUI()
+    end)
+    
+    enableCheckbox:SetScript("OnEnter", function(checkbox)
+        GameTooltip:SetOwner(checkbox, "ANCHOR_TOP")
+        GameTooltip:AddLine("Enable Bank UI Features", 1, 0.82, 0)
+        GameTooltip:AddLine("When enabled, Warband Nexus replaces the default bank UI.", 1, 1, 1, true)
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        GameTooltip:AddLine("When disabled, you can use other bank addons (Bagnon, ElvUI, etc.) without conflicts.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        GameTooltip:AddLine("|cff00ff00Data caching continues regardless of this setting.|r", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
     yOffset = yOffset + 78 -- Header height + spacing
     
     -- NOTE: Search box is now persistent in UI.lua (searchArea)
