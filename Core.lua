@@ -125,7 +125,6 @@ local defaults = {
         currencyShowZero = true,  -- Show currencies with 0 quantity
         
         -- Reputation settings
-        reputationFilterMode = "filtered",  -- "filtered" or "nonfiltered"
         reputationExpanded = {},  -- Collapse/expand state for reputation headers
         
         -- Display settings

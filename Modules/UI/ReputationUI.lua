@@ -484,9 +484,6 @@ function WarbandNexus:DrawReputationTab(parent)
         return yOffset + 50
     end
     
-    -- Get filter mode (no more inactive toggle)
-    local filterMode = self.db.profile.reputationFilterMode or "filtered"
-    
     -- Get faction metadata
     local factionMetadata = self.db.global.factionMetadata or {}
     
@@ -534,25 +531,7 @@ function WarbandNexus:DrawReputationTab(parent)
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    subtitleText:SetText("Track all active reputations and Renown across your characters")
-    
-    -- Filter Mode Toggle Button (now on right side, no inactive button)
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    toggleBtn:SetSize(120, 25)
-    toggleBtn:SetPoint("RIGHT", -10, 0)
-    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
-    toggleBtn:SetScript("OnClick", function(self)
-        if filterMode == "filtered" then
-            filterMode = "nonfiltered"
-            WarbandNexus.db.profile.reputationFilterMode = "nonfiltered"
-            self:SetText("Non-Filtered")
-        else
-            filterMode = "filtered"
-            WarbandNexus.db.profile.reputationFilterMode = "filtered"
-            self:SetText("Filtered")
-        end
-        WarbandNexus:RefreshUI()
-    end)
+    subtitleText:SetText("Track all active reputations and Renown in Blizzard's order")
     
     yOffset = yOffset + 78
     
@@ -694,9 +673,45 @@ function WarbandNexus:DrawReputationTab(parent)
         if charExpanded then
             local charIndent = CHAR_INDENT  -- Use standardized indent
             
-            if filterMode == "nonfiltered" then
-                -- ===== NON-FILTERED: Use Blizzard's Reputation Headers =====
-                local headers = char.reputationHeaders or {}
+            -- Header icons - smart detection (shared by both modes)
+            local function GetHeaderIcon(headerName)
+                -- Special faction types (Guild, Alliance, Horde)
+                if headerName:find("Guild") then
+                    return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+                elseif headerName:find("Alliance") then
+                    return "Interface\\Icons\\Achievement_PVP_A_A"
+                elseif headerName:find("Horde") then
+                    return "Interface\\Icons\\Achievement_PVP_H_H"
+                -- Expansions
+                elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
+                    return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
+                elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
+                    return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
+                elseif headerName:find("Shadowlands") then
+                    return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
+                elseif headerName:find("Battle") or headerName:find("Azeroth") then
+                    return "Interface\\Icons\\INV_Sword_39"
+                elseif headerName:find("Legion") then
+                    return "Interface\\Icons\\Spell_Shadow_Twilight"
+                elseif headerName:find("Draenor") then
+                    return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
+                elseif headerName:find("Pandaria") then
+                    return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+                elseif headerName:find("Cataclysm") then
+                    return "Interface\\Icons\\Spell_Fire_Flameshock"
+                elseif headerName:find("Lich King") or headerName:find("Northrend") then
+                    return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
+                elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
+                    return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
+                elseif headerName:find("Classic") then
+                    return "Interface\\Icons\\INV_Misc_Book_11"
+                else
+                    return "Interface\\Icons\\Achievement_Reputation_01"
+                end
+            end
+            
+            -- ===== Use Blizzard's Reputation Headers =====
+            local headers = char.reputationHeaders or {}
                 
                 for _, headerData in ipairs(headers) do
                     local headerReputations = {}
@@ -723,7 +738,8 @@ function WarbandNexus:DrawReputationTab(parent)
                             headerData.name .. " (" .. #headerReputations .. ")",
                             headerKey,
                             headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                            GetHeaderIcon(headerData.name)  -- Add icon support
                         )
                         header:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)  -- Under character, but left-aligned
                         header:SetWidth(width - charIndent)
@@ -737,7 +753,7 @@ function WarbandNexus:DrawReputationTab(parent)
                         if headerExpanded then
                             local headerIndent = charIndent + EXPANSION_INDENT  -- Standardized indent for expansion content
                             
-                            -- NEW APPROACH: Group factions and their subfactions
+                            -- NEW APPROACH: Group factions and their subfactions (preserve API order)
                             local factionList = {}  -- Ordered list of factions to render
                             local subfactionMap = {}  -- Track which parent has subfactions
                             
@@ -746,42 +762,38 @@ function WarbandNexus:DrawReputationTab(parent)
                                 if rep.data.isHeaderWithRep then
                                     subfactionMap[rep.data.name] = {
                                         parent = rep,
-                                        subfactions = {}
+                                        subfactions = {},
+                                        index = rep.id  -- Preserve original index
                                     }
                                 end
                             end
                             
-                            -- Second pass: assign factions to parents or direct list
+                            -- Second pass: assign factions to parents or direct list (preserve order)
                             for _, rep in ipairs(headerReputations) do
                                 local subHeader = rep.data.parentHeaders and rep.data.parentHeaders[2]
                                 
                                 if rep.data.isHeaderWithRep then
-                                    -- This is a parent, already added above
+                                    -- This is a parent - add to faction list
+                                    table.insert(factionList, {
+                                        rep = rep,
+                                        subfactions = subfactionMap[rep.data.name].subfactions,
+                                        originalIndex = rep.id  -- Track original API index
+                                    })
                                 elseif subHeader and subfactionMap[subHeader] then
                                     -- This is a subfaction of an isHeaderWithRep parent
                                     table.insert(subfactionMap[subHeader].subfactions, rep)
                                 else
                                     -- Regular direct faction
-                                    table.insert(factionList, {rep = rep, subfactions = nil})
+                                    table.insert(factionList, {
+                                        rep = rep,
+                                        subfactions = nil,
+                                        originalIndex = rep.id  -- Track original API index
+                                    })
                                 end
                             end
                             
-                            -- Third pass: insert parents with their subfactions into faction list
-                            for parentName, data in pairs(subfactionMap) do
-                                table.insert(factionList, {rep = data.parent, subfactions = data.subfactions})
-                            end
-                            
-                            -- Sort faction list to maintain order (parents before regular factions)
-                            table.sort(factionList, function(a, b)
-                                -- isHeaderWithRep items first
-                                if a.rep.data.isHeaderWithRep and not b.rep.data.isHeaderWithRep then
-                                    return true
-                                elseif not a.rep.data.isHeaderWithRep and b.rep.data.isHeaderWithRep then
-                                    return false
-                                end
-                                -- Otherwise, alphabetical by name
-                                return (a.rep.data.name or "") < (b.rep.data.name or "")
-                            end)
+                            -- NO SORTING - Keep Blizzard's API order
+                            -- The order from headerData.factions already matches in-game UI
                             
                             -- Render factions
                             local rowIdx = 0
@@ -803,172 +815,6 @@ function WarbandNexus:DrawReputationTab(parent)
                         end
                     end
                 end
-            else
-                -- ===== FILTERED: Multi-level Hierarchy (API-driven) =====
-                -- Group by top-level header (first in parentHeaders array)
-                local byTopHeader = {}
-                local topHeaderOrder = {}
-                
-                for _, rep in ipairs(reputations) do
-                    local topHeader = (rep.data.parentHeaders and rep.data.parentHeaders[1]) or "Other"
-                    if not byTopHeader[topHeader] then
-                        byTopHeader[topHeader] = {}
-                        table.insert(topHeaderOrder, topHeader)
-                    end
-                    table.insert(byTopHeader[topHeader], rep)
-                end
-                
-                -- Sort headers by expansion order (newest first)
-                local expansionOrder = {
-                    ["The War Within"] = 1,
-                    ["Dragonflight"] = 2,
-                    ["Shadowlands"] = 3,
-                    ["Battle for Azeroth"] = 4,
-                    ["Legion"] = 5,
-                    ["Warlords of Draenor"] = 6,
-                    ["Mists of Pandaria"] = 7,
-                    ["Cataclysm"] = 8,
-                    ["Wrath of the Lich King"] = 9,
-                    ["The Burning Crusade"] = 10,
-                    ["Classic"] = 11,
-                    ["Other"] = 999,
-                }
-                table.sort(topHeaderOrder, function(a, b)
-                    local orderA = expansionOrder[a] or 500
-                    local orderB = expansionOrder[b] or 500
-                    if orderA ~= orderB then
-                        return orderA < orderB
-                    end
-                    return a < b  -- Alphabetical fallback
-                end)
-                
-                -- Header icons - smart detection
-                local function GetHeaderIcon(headerName)
-                    if headerName:find("War Within") or headerName:find("Khaz Algar") then
-                        return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
-                    elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
-                        return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
-                    elseif headerName:find("Shadowlands") then
-                        return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
-                    elseif headerName:find("Battle") or headerName:find("Azeroth") then
-                        return "Interface\\Icons\\INV_Sword_39"
-                    elseif headerName:find("Legion") then
-                        return "Interface\\Icons\\Spell_Shadow_Twilight"
-                    elseif headerName:find("Draenor") then
-                        return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
-                    elseif headerName:find("Pandaria") then
-                        return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
-                    elseif headerName:find("Cataclysm") then
-                        return "Interface\\Icons\\Spell_Fire_Flameshock"
-                    elseif headerName:find("Lich King") or headerName:find("Northrend") then
-                        return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
-                    elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
-                        return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
-                    elseif headerName:find("Classic") then
-                        return "Interface\\Icons\\INV_Misc_Book_11"
-                    else
-                        return "Interface\\Icons\\Achievement_Reputation_01"
-                    end
-                end
-                
-                -- Process each top-level header
-                for _, topHeaderName in ipairs(topHeaderOrder) do
-                    if byTopHeader[topHeaderName] and #byTopHeader[topHeaderName] > 0 then
-                        local topHeaderKey = charKey .. "-toph-" .. topHeaderName
-                        local topHeaderExpanded = IsExpanded(topHeaderKey, true)
-                        
-                        if reputationSearchText ~= "" then
-                            topHeaderExpanded = true
-                        end
-                        
-                        -- Top-level header
-                        local topHeader, topHeaderBtn = CreateCollapsibleHeader(
-                            parent,
-                            topHeaderName .. " (" .. #byTopHeader[topHeaderName] .. ")",
-                            topHeaderKey,
-                            topHeaderExpanded,
-                            function(isExpanded) ToggleExpand(topHeaderKey, isExpanded) end,
-                            GetHeaderIcon(topHeaderName)
-                        )
-                        topHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
-                        topHeader:SetWidth(width - charIndent)
-                        topHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        local COLORS = GetCOLORS()
-                        local borderColor = COLORS.accent
-                        topHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
-                        
-                        yOffset = yOffset + HEADER_SPACING
-                        
-                        if topHeaderExpanded then
-                            local topIndent = charIndent + EXPANSION_INDENT  -- Standardized indent for expansion content
-                            
-                            -- NEW APPROACH: Group factions and their subfactions
-                            local factionList = {}  -- Ordered list of factions to render
-                            local subfactionMap = {}  -- Track which parent has subfactions
-                            
-                            -- First pass: identify isHeaderWithRep parents and init subfaction arrays
-                            for _, rep in ipairs(byTopHeader[topHeaderName]) do
-                                if rep.data.isHeaderWithRep then
-                                    subfactionMap[rep.data.name] = {
-                                        parent = rep,
-                                        subfactions = {}
-                                    }
-                                end
-                            end
-                            
-                            -- Second pass: assign factions to parents or direct list
-                            for _, rep in ipairs(byTopHeader[topHeaderName]) do
-                                local subHeader = rep.data.parentHeaders and rep.data.parentHeaders[2]
-                                
-                                if rep.data.isHeaderWithRep then
-                                    -- This is a parent, already added above
-                                elseif subHeader and subfactionMap[subHeader] then
-                                    -- This is a subfaction of an isHeaderWithRep parent
-                                    table.insert(subfactionMap[subHeader].subfactions, rep)
-                                else
-                                    -- Regular direct faction
-                                    table.insert(factionList, {rep = rep, subfactions = nil})
-                                end
-                            end
-                            
-                            -- Third pass: insert parents with their subfactions into faction list
-                            for parentName, data in pairs(subfactionMap) do
-                                table.insert(factionList, {rep = data.parent, subfactions = data.subfactions})
-                            end
-                            
-                            -- Sort faction list to maintain order (parents before regular factions)
-                            table.sort(factionList, function(a, b)
-                                -- isHeaderWithRep items first
-                                if a.rep.data.isHeaderWithRep and not b.rep.data.isHeaderWithRep then
-                                    return true
-                                elseif not a.rep.data.isHeaderWithRep and b.rep.data.isHeaderWithRep then
-                                    return false
-                                end
-                                -- Otherwise, alphabetical by name
-                                return (a.rep.data.name or "") < (b.rep.data.name or "")
-                            end)
-                            
-                            -- Render factions
-                            local rowIdx = 0
-                            for _, item in ipairs(factionList) do
-                                rowIdx = rowIdx + 1
-                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, rowIdx, topIndent, width, yOffset, item.subfactions, IsExpanded, ToggleExpand)
-                                yOffset = newYOffset
-                                
-                                -- If expanded and has subfactions, render them nested
-                                if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                    local subIndent = topIndent + CATEGORY_INDENT  -- Standardized indent for subfactions
-                                    local subRowIdx = 0
-                                    for _, subRep in ipairs(item.subfactions) do
-                                        subRowIdx = subRowIdx + 1
-                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, subRowIdx, subIndent, width, yOffset, nil, IsExpanded, ToggleExpand)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
         end
         
         yOffset = yOffset + 5
