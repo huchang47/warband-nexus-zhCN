@@ -577,6 +577,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
                             headerIcon = "Interface\\Icons\\Achievement_BG_returnXflags_def_WSG"
                         elseif headerData.name:find("Dungeon") or headerData.name:find("Raid") then
                             headerIcon = "Interface\\Icons\\achievement_boss_archaedas"
+                        elseif headerData.name:find("Miscellaneous") then
+                            headerIcon = "Interface\\Icons\\INV_Misc_Gear_01"
                         end
                         
                         local header, headerBtn = CreateCollapsibleHeader(
