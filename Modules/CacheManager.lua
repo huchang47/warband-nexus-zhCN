@@ -29,6 +29,7 @@ local CACHE_CONFIG = {
         COLLECTIONS = 1800,    -- 30 minutes (changes rarely)
         SEARCH = 60,           -- 1 minute (user-driven)
         PROFESSIONS = 3600,    -- 60 minutes (changes rarely, only when player trains)
+        REPUTATIONS = 300,     -- 5 minutes (changes infrequently)
     },
     
     -- Enable/disable cache categories
@@ -39,6 +40,7 @@ local CACHE_CONFIG = {
         COLLECTIONS = true,
         SEARCH = true,
         PROFESSIONS = true,
+        REPUTATIONS = true,
     },
 }
 
@@ -54,6 +56,7 @@ local cache = {
     collections = {},      -- Cached collection stats
     search = {},           -- Cached search results by query
     professions = {},      -- Cached profession data by character
+    reputations = {},      -- Cached reputation data by character
 }
 
 -- Statistics
@@ -309,6 +312,41 @@ function WarbandNexus:InvalidateProfessionCache(characterKey)
 end
 
 --[[
+    Get cached reputation data for a character
+    @param characterKey string - Character key (name-realm)
+    @return table - Reputation data structure
+]]
+function WarbandNexus:GetCachedReputationData(characterKey)
+    local cached, hit = GetCache("reputations", characterKey)
+    if hit then
+        return cached
+    end
+    
+    -- Cache miss - fetch from saved data
+    if self.db.global.characters and self.db.global.characters[characterKey] then
+        local reputationData = self.db.global.characters[characterKey].reputations
+        if reputationData then
+            SetCache("reputations", characterKey, reputationData)
+            return reputationData
+        end
+    end
+    
+    return nil
+end
+
+--[[
+    Invalidate reputation cache for a specific character
+    @param characterKey string - Optional character key (if nil, clears all)
+]]
+function WarbandNexus:InvalidateReputationCache(characterKey)
+    if characterKey then
+        InvalidateCache("reputations", characterKey)
+    else
+        InvalidateCache("reputations", nil)
+    end
+end
+
+--[[
     Clear all caches (useful for debugging or major data refresh)
 ]]
 function WarbandNexus:ClearAllCaches()
@@ -445,6 +483,11 @@ function WarbandNexus:InitializeCacheInvalidation()
     -- Professions changed
     self:RegisterMessage("WARBAND_PROFESSIONS_UPDATED", function()
         self:InvalidateProfessionCache()
+    end)
+    
+    -- Reputations changed
+    self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+        self:InvalidateReputationCache()
     end)
     
 end

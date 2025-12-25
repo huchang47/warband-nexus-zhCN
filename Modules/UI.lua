@@ -45,6 +45,7 @@ local expandedGroups = {} -- Persisted expand/collapse state for item groups
 ns.itemsSearchText = ""
 ns.storageSearchText = ""
 ns.currencySearchText = ""
+ns.reputationSearchText = ""
 
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
@@ -58,6 +59,7 @@ end
 ns.UI_GetItemsSearchText = function() return ns.itemsSearchText end
 ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
 ns.UI_GetCurrencySearchText = function() return ns.currencySearchText end
+ns.UI_GetReputationSearchText = function() return ns.reputationSearchText end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
 
 --============================================================================
@@ -628,7 +630,8 @@ function WarbandNexus:CreateMainWindow()
     f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing * 2)
     f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 3)
     f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 4)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 5)
+    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 5)
+    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 6)
     
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
@@ -831,7 +834,7 @@ function WarbandNexus:PopulateContent()
     end
     
     -- Show/hide searchArea and create persistent search boxes
-    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage" or mainFrame.currentTab == "currency")
+    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage" or mainFrame.currentTab == "currency" or mainFrame.currentTab == "reputations")
     
     if mainFrame.searchArea then
         if isSearchTab then
@@ -898,6 +901,23 @@ function WarbandNexus:PopulateContent()
                 currencySearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 currencySearch:Hide()
                 mainFrame.persistentSearchBoxes.currency = currencySearch
+                
+                -- Reputation search box (responsive width)
+                local reputationSearch, reputationClear = CreateSearchBox(
+                    mainFrame.searchArea,
+                    10,  -- Dummy width, will be set with anchors
+                    "Search reputations...",
+                    function(searchText)
+                        ns.reputationSearchText = searchText
+                        self:PopulateContent()
+                    end,
+                    0.4
+                )
+                reputationSearch:ClearAllPoints()
+                reputationSearch:SetPoint("TOPLEFT", 10, -8)
+                reputationSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
+                reputationSearch:Hide()
+                mainFrame.persistentSearchBoxes.reputations = reputationSearch
             end
             
             -- Show appropriate search box
@@ -905,14 +925,22 @@ function WarbandNexus:PopulateContent()
                 mainFrame.persistentSearchBoxes.items:Show()
                 mainFrame.persistentSearchBoxes.storage:Hide()
                 mainFrame.persistentSearchBoxes.currency:Hide()
+                mainFrame.persistentSearchBoxes.reputations:Hide()
             elseif mainFrame.currentTab == "storage" then
                 mainFrame.persistentSearchBoxes.items:Hide()
                 mainFrame.persistentSearchBoxes.storage:Show()
                 mainFrame.persistentSearchBoxes.currency:Hide()
-            else -- currency
+                mainFrame.persistentSearchBoxes.reputations:Hide()
+            elseif mainFrame.currentTab == "currency" then
                 mainFrame.persistentSearchBoxes.items:Hide()
                 mainFrame.persistentSearchBoxes.storage:Hide()
                 mainFrame.persistentSearchBoxes.currency:Show()
+                mainFrame.persistentSearchBoxes.reputations:Hide()
+            else -- reputations
+                mainFrame.persistentSearchBoxes.items:Hide()
+                mainFrame.persistentSearchBoxes.storage:Hide()
+                mainFrame.persistentSearchBoxes.currency:Hide()
+                mainFrame.persistentSearchBoxes.reputations:Show()
             end
         else
             mainFrame.searchArea:Hide()
@@ -927,6 +955,7 @@ function WarbandNexus:PopulateContent()
                 mainFrame.persistentSearchBoxes.items:Hide()
                 mainFrame.persistentSearchBoxes.storage:Hide()
                 mainFrame.persistentSearchBoxes.currency:Hide()
+                mainFrame.persistentSearchBoxes.reputations:Hide()
             end
         end
     end
@@ -943,6 +972,8 @@ function WarbandNexus:PopulateContent()
         height = self:DrawStorageTab(scrollChild)
     elseif mainFrame.currentTab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
+    elseif mainFrame.currentTab == "reputations" then
+        height = self:DrawReputationTab(scrollChild)
     elseif mainFrame.currentTab == "stats" then
         height = self:DrawStatistics(scrollChild)
     else

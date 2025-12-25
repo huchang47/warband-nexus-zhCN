@@ -216,7 +216,11 @@ local UI_LAYOUT = {
     ROW_HEIGHT = 26,
     ROW_SPACING = 28,      -- Space between item/currency rows
     HEADER_SPACING = 38,   -- Space after headers (character, expansion, category)
-    SECTION_SPACING = 25,  -- Space between major sections
+    SECTION_SPACING = 15,  -- Space between major sections (character headers) - reduced from 25
+    -- Indent constants for hierarchical content
+    CHAR_INDENT = 20,      -- Indent for content under character header
+    EXPANSION_INDENT = 20, -- Additional indent for expansion content
+    CATEGORY_INDENT = 20,  -- Additional indent for category content
 }
 
 -- Export to namespace
@@ -761,6 +765,11 @@ end
 --============================================================================
 
 local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
+    -- Validate parent frame
+    if not parent or not parent.CreateTexture then
+        return startY or 0
+    end
+    
     local yOffset = startY + 50
     
     local icon = parent:CreateTexture(nil, "ARTWORK")

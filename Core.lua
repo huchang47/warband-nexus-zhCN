@@ -124,6 +124,10 @@ local defaults = {
         currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
         currencyShowZero = true,  -- Show currencies with 0 quantity
         
+        -- Reputation settings
+        reputationFilterMode = "filtered",  -- "filtered" or "nonfiltered"
+        reputationExpanded = {},  -- Collapse/expand state for reputation headers
+        
         -- Display settings
         showItemLevel = true,
         
@@ -336,6 +340,7 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
+    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged") -- Reputation changes
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
@@ -504,6 +509,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn|r - Open addon window")
         self:Print("  |cff00ccff/wn options|r - Open settings")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
+        self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         return
     end
     
@@ -520,9 +526,48 @@ function WarbandNexus:SlashCommand(input)
             if removed == 0 then
                 self:Print("|cff00ff00No inactive characters found (90+ days)|r")
             else
-                self:Print(string.format("|cff00ff00Removed %d inactive character(s)|r", removed))
+                self:Print("|cff00ff00Removed " .. removed .. " inactive character(s)|r")
             end
         end
+        return
+    elseif cmd == "resetrep" then
+        -- Reset reputation data (clear old structure, rebuild from API)
+        self:Print("|cffff9900Resetting reputation data...|r")
+        
+        -- Clear old metadata
+        if self.db.global.factionMetadata then
+            self.db.global.factionMetadata = {}
+        end
+        
+        -- Clear reputation data for current character
+        local playerKey = UnitName("player") .. "-" .. GetRealmName()
+        if self.db.global.characters[playerKey] then
+            self.db.global.characters[playerKey].reputations = {}
+            self.db.global.characters[playerKey].reputationHeaders = {}
+        end
+        
+        -- Invalidate cache
+        if self.InvalidateReputationCache then
+            self:InvalidateReputationCache(playerKey)
+        end
+        
+        -- Rebuild metadata and scan
+        if self.BuildFactionMetadata then
+            self:BuildFactionMetadata()
+        end
+        
+        if self.ScanReputations then
+            C_Timer.After(0.5, function()
+                self:ScanReputations()
+                self:Print("|cff00ff00Reputation data reset complete! Reloading UI...|r")
+                
+                -- Refresh UI
+                if self.RefreshUI then
+                    self:RefreshUI()
+                end
+            end)
+        end
+        
         return
     elseif cmd == "debug" then
         -- Hidden debug mode toggle (for developers)
@@ -1775,6 +1820,35 @@ function WarbandNexus:OnCurrencyChanged()
 end
 
 --[[
+    Called when reputation changes
+    Scan and update reputation data
+]]
+function WarbandNexus:OnReputationChanged()
+    -- Scan reputations in background
+    if self.ScanReputations then
+        self:ScanReputations()
+    end
+    
+    -- Send message for cache invalidation
+    self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+    
+    -- INSTANT UI refresh if reputation tab is open
+    local mainFrame = self.UI and self.UI.mainFrame
+    if mainFrame and mainFrame.currentTab == "reputations" and self.RefreshUI then
+        -- Use short delay to batch multiple reputation events
+        if not self.reputationRefreshPending then
+            self.reputationRefreshPending = true
+            C_Timer.After(0.2, function()
+                self.reputationRefreshPending = false
+                if WarbandNexus and WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+        end
+    end
+end
+
+--[[
     Called when an addon is loaded
     Check if it's a conflicting bank addon that user previously disabled
 ]]
@@ -1839,6 +1913,13 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             self:CheckNotificationsOnLogin()
         end
     end
+    
+    -- Scan reputations on login (after 3 seconds to ensure API is ready)
+    C_Timer.After(3, function()
+        if WarbandNexus and WarbandNexus.ScanReputations then
+            WarbandNexus:ScanReputations()
+        end
+    end)
     
     -- Single save attempt after 2 seconds (enough for character data to load)
     C_Timer.After(2, function()

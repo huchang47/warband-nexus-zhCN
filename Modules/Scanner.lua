@@ -638,3 +638,405 @@ function WarbandNexus:GetBankStatistics()
     
     return stats
 end
+
+--[[
+    Helper function to get table keys for debugging
+]]
+function WarbandNexus:GetTableKeys(tbl)
+    local keys = {}
+    if type(tbl) == "table" then
+        for k, v in pairs(tbl) do
+            table.insert(keys, tostring(k) .. "=" .. tostring(v))
+        end
+    end
+    return keys
+end
+
+--[[
+    Build faction metadata (global, shared across all characters)
+    Called once to populate faction information
+]]
+function WarbandNexus:BuildFactionMetadata()
+    if not self.db.global.factionMetadata then
+        self.db.global.factionMetadata = {}
+    end
+    
+    local metadata = self.db.global.factionMetadata
+    
+    -- Check if C_Reputation API is available
+    if not C_Reputation or not C_Reputation.GetNumFactions then
+        return false
+    end
+    
+    local numFactions = C_Reputation.GetNumFactions()
+    if not numFactions or numFactions == 0 then
+        return false
+    end
+    
+    -- Expand all headers to get full faction list
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.isHeader and factionData.isCollapsed then
+            C_Reputation.ExpandFactionHeader(i)
+        end
+    end
+    
+    -- Rescan after expansion
+    numFactions = C_Reputation.GetNumFactions()
+    
+    -- Track header stack for proper nested hierarchy (API-driven)
+    local headerStack = {}  -- Stack of current headers for nested structure
+    
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        
+        if factionData and factionData.name then
+            -- SPECIAL DEBUG for TWW, Cartels, Severed Threads
+            if factionData.name == "The War Within" or 
+               factionData.name == "The Cartels of Undermine" or 
+               factionData.name == "The Severed Threads" then
+                print(string.format("=== SPECIAL DEBUG ==="))
+                print(string.format("Index: %d, Name: '%s'", i, factionData.name))
+                print(string.format("isHeader: %s, isChild: %s, isHeaderWithRep: %s", 
+                    tostring(factionData.isHeader), tostring(factionData.isChild), tostring(factionData.isHeaderWithRep)))
+                print(string.format("factionID: %s, isCollapsed: %s", 
+                    tostring(factionData.factionID), tostring(factionData.isCollapsed)))
+                print(string.format("Current headerStack: [%s]", table.concat(headerStack, " > ")))
+                print(string.format("===================="))
+            end
+            
+            if factionData.isHeader then
+                -- This is a header (might be top-level or nested)
+                if factionData.isChild then
+                    -- Child header: use depth-based logic for siblings vs nesting
+                    if #headerStack == 1 then
+                        -- First child under top-level parent → append
+                        table.insert(headerStack, factionData.name)
+                        print(string.format("DEBUG META: Child header '%s' (first child, depth=1), stack: [%s]", 
+                            factionData.name, table.concat(headerStack, " > ")))
+                    elseif #headerStack == 2 then
+                        -- Already have a child header, this is a sibling → replace
+                        headerStack[2] = factionData.name
+                        print(string.format("DEBUG META: Child header '%s' (sibling, depth=2), stack: [%s]", 
+                            factionData.name, table.concat(headerStack, " > ")))
+                    else
+                        -- Safety: reset to parent + this child
+                        headerStack = {headerStack[1], factionData.name}
+                        print(string.format("DEBUG META: Child header '%s' (safety reset), stack: [%s]", 
+                            factionData.name, table.concat(headerStack, " > ")))
+                    end
+                else
+                    -- Top-level header: reset stack
+                    headerStack = {factionData.name}
+                    print(string.format("DEBUG META: Top-level header '%s' (isChild=false), stack: [%s]", 
+                        factionData.name, table.concat(headerStack, " > ")))
+                end
+                
+                -- If isHeaderWithRep, ALSO store as faction (e.g., Severed Threads)
+                if factionData.isHeaderWithRep and factionData.factionID then
+                    -- Check if this is a renown faction
+                    local isRenown = false
+                    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                        local majorData = C_MajorFactions.GetMajorFactionData(factionData.factionID)
+                        isRenown = (majorData ~= nil)
+                    end
+                    
+                    -- Get faction icon
+                    local iconTexture = nil
+                    if C_Reputation.GetFactionDataByID then
+                        local detailedData = C_Reputation.GetFactionDataByID(factionData.factionID)
+                        if detailedData and detailedData.texture then
+                            iconTexture = detailedData.texture
+                        end
+                    end
+                    
+                    -- Store as both header AND faction
+                    -- parentHeaders = all parents EXCEPT itself
+                    local parentHeaders = {}
+                    for j = 1, #headerStack - 1 do
+                        table.insert(parentHeaders, headerStack[j])
+                    end
+                    
+                    metadata[factionData.factionID] = {
+                        name = factionData.name,
+                        description = factionData.description or "",
+                        iconTexture = iconTexture,
+                        isRenown = isRenown,
+                        canToggleAtWar = factionData.canToggleAtWar or false,
+                        parentHeaders = parentHeaders,  -- API-driven hierarchy
+                        isHeader = true,
+                        isHeaderWithRep = true,
+                    }
+                end
+            elseif factionData.factionID and not factionData.isHeader then
+                -- Regular faction (not a header)
+                -- Only build metadata if not exists
+                if not metadata[factionData.factionID] then
+                    -- Check if this is a renown faction
+                    local isRenown = false
+                    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                        local majorData = C_MajorFactions.GetMajorFactionData(factionData.factionID)
+                        isRenown = (majorData ~= nil)
+                    end
+                    
+                    -- Get faction icon
+                    local iconTexture = nil
+                    if C_Reputation.GetFactionDataByID then
+                        local detailedData = C_Reputation.GetFactionDataByID(factionData.factionID)
+                        if detailedData and detailedData.texture then
+                            iconTexture = detailedData.texture
+                        end
+                    end
+                    
+                    -- Copy current header path
+                    local parentHeaders = {}
+                    for j = 1, #headerStack do
+                        table.insert(parentHeaders, headerStack[j])
+                    end
+                    
+                    metadata[factionData.factionID] = {
+                        name = factionData.name,
+                        description = factionData.description or "",
+                        iconTexture = iconTexture,
+                        isRenown = isRenown,
+                        canToggleAtWar = factionData.canToggleAtWar or false,
+                        parentHeaders = parentHeaders,  -- Full path from API
+                        isHeader = false,
+                        isHeaderWithRep = false,
+                    }
+                    
+                    -- DEBUG: Verify metadata build
+                    print(string.format("DEBUG META: Faction '%s' (ID:%d) - Headers: [%s], isRenown: %s", 
+                        factionData.name, factionData.factionID, 
+                        table.concat(parentHeaders, " > "), tostring(isRenown)))
+                end
+            end
+        end
+    end
+    
+    return true
+end
+
+--[[
+    Scan Reputations (Modern approach with metadata separation)
+    Stores only progress data in char.reputations
+]]
+function WarbandNexus:ScanReputations()
+    -- Get current character key
+    local playerKey = UnitName("player") .. "-" .. GetRealmName()
+    
+    -- Initialize character data if needed
+    if not self.db.global.characters[playerKey] then
+        self.db.global.characters[playerKey] = {}
+    end
+    
+    if not self.db.global.characters[playerKey].reputations then
+        self.db.global.characters[playerKey].reputations = {}
+    end
+    
+    -- Build metadata first (only adds new factions, doesn't overwrite)
+    self:BuildFactionMetadata()
+    
+    local reputations = {}
+    local headers = {}
+    
+    -- ========================================
+    -- PART 1: Scan Classic Reputation System (Modern C_Reputation API)
+    -- ========================================
+    
+    -- Check if C_Reputation API is available
+    if not C_Reputation or not C_Reputation.GetNumFactions then
+        return false
+    end
+    
+    local numFactions = C_Reputation.GetNumFactions()
+    if not numFactions or numFactions == 0 then
+        return false
+    end
+    
+    -- Expand all headers to get full faction list
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.isHeader and factionData.isCollapsed then
+            C_Reputation.ExpandFactionHeader(i)
+        end
+    end
+    
+    -- Rescan after expansion
+    numFactions = C_Reputation.GetNumFactions()
+    
+    local currentHeader = nil
+    local currentHeaderFactions = {}
+    
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        
+        if not factionData or not factionData.name then
+            break
+        end
+        
+        -- Handle headers (for non-filtered mode)
+        if factionData.isHeader then
+            -- Only create new top-level header if NOT isHeaderWithRep
+            -- isHeaderWithRep headers (Cartels, Severed) are subfactions under their parent
+            if not factionData.isHeaderWithRep then
+                -- Save previous header if exists
+                if currentHeader then
+                    table.insert(headers, {
+                        name = currentHeader,
+                        index = #headers + 1,
+                        isCollapsed = false,
+                        factions = currentHeaderFactions,
+                    })
+                end
+                
+                -- Start new header
+                currentHeader = factionData.name
+                currentHeaderFactions = {}
+            end
+        end
+        
+        -- Process faction (regular factions OR isHeaderWithRep factions)
+        -- Skip pure headers that don't have reputation
+        if factionData.factionID and (not factionData.isHeader or factionData.isHeaderWithRep) then
+            -- Calculate reputation progress
+            local currentValue, maxValue
+            local renownLevel, renownMaxLevel = nil, nil
+            local isMajorFaction = false
+            
+            -- Check if this is a Renown faction AND if character has it unlocked
+            -- Use GetMajorFactionRenownInfo as validation - returns nil if not unlocked
+            local isRenownFaction = false
+            if C_MajorFactions and C_MajorFactions.GetMajorFactionRenownInfo then
+                local renownInfo = C_MajorFactions.GetMajorFactionRenownInfo(factionData.factionID)
+                if renownInfo then  -- nil = not unlocked for this character
+                    isRenownFaction = true
+                    isMajorFaction = true
+                    -- Try both possible field names (API inconsistency)
+                    renownLevel = renownInfo.renownLevel or renownInfo.currentRenownLevel or 0
+                            
+                    -- DEBUG: Verify renown data collection
+                    print(string.format("DEBUG SCAN: Faction '%s' (ID:%d) - Renown Level: %s, Progress: %s/%s", 
+                        factionData.name, factionData.factionID, tostring(renownLevel), 
+                        tostring(renownInfo.renownReputationEarned), tostring(renownInfo.renownLevelThreshold)))
+                    print(string.format("DEBUG SCAN: Full renownInfo keys: %s", table.concat(self:GetTableKeys(renownInfo), ", ")))
+                    
+                    -- Get correct max renown level (faction-specific)
+                    if C_MajorFactions.GetMaximumRenownLevel then
+                        renownMaxLevel = C_MajorFactions.GetMaximumRenownLevel(factionData.factionID) or 25
+                    else
+                        renownMaxLevel = 25  -- Fallback
+                    end
+                    
+                    print(string.format("DEBUG SCAN: Max Renown Level: %d", renownMaxLevel))
+                    
+                    -- Get accurate renown progress within current level
+                    if C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(factionData.factionID) then
+                        currentValue = 0
+                        maxValue = 1
+                    else
+                        -- Use renownInfo for accurate progress
+                        currentValue = renownInfo.renownReputationEarned or 0
+                        maxValue = renownInfo.renownLevelThreshold or 1
+                    end
+                end
+                -- If renownInfo is nil, faction is not unlocked - SKIP (do not store)
+            end
+            
+            -- If not a Renown faction, check if it's inactive (classic reputation)
+            if not isRenownFaction then
+                local isInactive = false
+                if factionData.isInactive ~= nil then
+                    isInactive = factionData.isInactive
+                elseif C_Reputation.IsFactionInactive then
+                    local success, result = pcall(C_Reputation.IsFactionInactive, i)
+                    if success then
+                        isInactive = result or false
+                    end
+                end
+                
+                -- Only process if NOT inactive
+                if not isInactive then
+                    -- Use classic reputation calculation
+                    currentValue = factionData.currentStanding - factionData.currentReactionThreshold
+                    maxValue = factionData.nextReactionThreshold - factionData.currentReactionThreshold
+                end
+            end
+            
+            -- Only store if faction is valid (Renown unlocked OR classic non-inactive)
+            if isRenownFaction or (not isRenownFaction and currentValue) then
+                -- Check Paragon
+                local paragonValue, paragonThreshold, paragonRewardPending = nil, nil, nil
+                if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionData.factionID) then
+                    local pValue, pThreshold, rewardQuestID, hasRewardPending = C_Reputation.GetFactionParagonInfo(factionData.factionID)
+                    if pValue and pThreshold then
+                        paragonValue = pValue % pThreshold
+                        paragonThreshold = pThreshold
+                        paragonRewardPending = hasRewardPending or false
+                    end
+                end
+                
+                -- Store ONLY progress data (metadata is separate)
+                -- For Major Factions: no standingID (Renown doesn't use standings)
+                reputations[factionData.factionID] = {
+                    standingID = isMajorFaction and nil or factionData.reaction,  -- nil for Renown
+                    currentValue = currentValue,
+                    maxValue = maxValue,
+                    renownLevel = renownLevel,
+                    renownMaxLevel = renownMaxLevel,
+                    paragonValue = paragonValue,
+                    paragonThreshold = paragonThreshold,
+                    paragonRewardPending = paragonRewardPending,
+                    isWatched = factionData.isWatched or false,
+                    atWarWith = factionData.atWarWith or false,
+                    isMajorFaction = isMajorFaction,  -- Flag to prevent duplicate display
+                    lastUpdated = time(),
+                }
+                
+                -- Add to current header's factions
+                if currentHeader then
+                    table.insert(currentHeaderFactions, factionData.factionID)
+                end
+            end
+        end
+    end
+    
+    -- Save last header
+    if currentHeader then
+        table.insert(headers, {
+            name = currentHeader,
+            index = #headers + 1,
+            isCollapsed = false,
+            factions = currentHeaderFactions,
+        })
+    end
+    
+    -- Save to database
+    self.db.global.characters[playerKey].reputations = reputations
+    self.db.global.characters[playerKey].reputationHeaders = headers
+    self.db.global.characters[playerKey].reputationsLastScan = time()
+    
+    -- Invalidate cache
+    self:InvalidateReputationCache(playerKey)
+    
+    return true
+end
+
+--[[
+    Categorize reputation (DEPRECATED - now using isRenown flag only)
+    This function is kept minimal for backward compatibility
+    @param factionID number
+    @return isRenown boolean (true if Major Faction/Renown, false otherwise)
+]]
+function WarbandNexus:CategorizeReputation(factionID)
+    -- Future-proof: Only check if it's a Renown faction using API
+    -- No hardcoded expansion lists or faction ID ranges
+    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+        if majorData then
+            return true  -- Is a Renown/Major Faction
+        end
+    end
+    
+    return false  -- Regular reputation
+end
