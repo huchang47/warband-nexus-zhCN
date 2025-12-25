@@ -61,23 +61,82 @@ function WarbandNexus:DrawCharacterList(parent)
         totalGold = totalGold + (char.gold or 0)
     end
     
-    local goldCard = CreateCard(parent, 50)
-    goldCard:SetPoint("TOPLEFT", 10, -yOffset)
-    goldCard:SetPoint("TOPRIGHT", -10, -yOffset)
-    goldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
-    -- Keep gold border as gold color (special case)
-    goldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    -- Add Warband Bank gold to total
+    local warbandBankGold = self:GetWarbandBankMoney() or 0
+    local totalWithWarband = totalGold + warbandBankGold
     
-    local goldIcon = goldCard:CreateTexture(nil, "ARTWORK")
-    goldIcon:SetSize(28, 28)
-    goldIcon:SetPoint("LEFT", 15, 0)
-    goldIcon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+    -- Calculate card width for 3 cards in a row (same as Statistics)
+    local leftMargin = 10
+    local rightMargin = 10
+    local cardSpacing = 10
+    local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
+    local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
     
-    local goldLabel = goldCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    goldLabel:SetPoint("LEFT", goldIcon, "RIGHT", 10, 0)
-    goldLabel:SetText("Total Gold: |cffffd700" .. FormatGold(totalGold) .. "|r")
+    -- Characters Gold Card (Left)
+    local charGoldCard = CreateCard(parent, 90)
+    charGoldCard:SetWidth(threeCardWidth)
+    charGoldCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
+    charGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
+    charGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
     
-    yOffset = yOffset + 55 -- Reduced spacing
+    local cg1Icon = charGoldCard:CreateTexture(nil, "ARTWORK")
+    cg1Icon:SetSize(36, 36)
+    cg1Icon:SetPoint("LEFT", 15, 0)
+    cg1Icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+    
+    local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
+    cg1Label:SetText("CHARACTERS GOLD")
+    cg1Label:SetTextColor(0.6, 0.6, 0.6)
+    
+    local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    cg1Value:SetPoint("BOTTOMLEFT", cg1Icon, "BOTTOMRIGHT", 12, 0)
+    cg1Value:SetText("|cffffd700" .. FormatGold(totalGold) .. "|r")
+    
+    -- Warband Gold Card (Middle)
+    local wbGoldCard = CreateCard(parent, 90)
+    wbGoldCard:SetWidth(threeCardWidth)
+    wbGoldCard:SetPoint("LEFT", charGoldCard, "RIGHT", cardSpacing, 0)
+    wbGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
+    wbGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    
+    local wb1Icon = wbGoldCard:CreateTexture(nil, "ARTWORK")
+    wb1Icon:SetSize(36, 36)
+    wb1Icon:SetPoint("LEFT", 15, 0)
+    wb1Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+    
+    local wb1Label = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    wb1Label:SetPoint("TOPLEFT", wb1Icon, "TOPRIGHT", 12, -2)
+    wb1Label:SetText("WARBAND GOLD")
+    wb1Label:SetTextColor(0.6, 0.6, 0.6)
+    
+    local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    wb1Value:SetPoint("BOTTOMLEFT", wb1Icon, "BOTTOMRIGHT", 12, 0)
+    wb1Value:SetText("|cffffd700" .. FormatGold(warbandBankGold) .. "|r")
+    
+    -- Total Gold Card (Right)
+    local totalGoldCard = CreateCard(parent, 90)
+    totalGoldCard:SetWidth(threeCardWidth)
+    totalGoldCard:SetPoint("LEFT", wbGoldCard, "RIGHT", cardSpacing, 0)
+    totalGoldCard:SetPoint("RIGHT", -rightMargin, 0)
+    totalGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
+    totalGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    
+    local tg1Icon = totalGoldCard:CreateTexture(nil, "ARTWORK")
+    tg1Icon:SetSize(36, 36)
+    tg1Icon:SetPoint("LEFT", 15, 0)
+    tg1Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+    
+    local tg1Label = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tg1Label:SetPoint("TOPLEFT", tg1Icon, "TOPRIGHT", 12, -2)
+    tg1Label:SetText("TOTAL GOLD")
+    tg1Label:SetTextColor(0.6, 0.6, 0.6)
+    
+    local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    tg1Value:SetPoint("BOTTOMLEFT", tg1Icon, "BOTTOMRIGHT", 12, 0)
+    tg1Value:SetText("|cffffd700" .. FormatGold(totalWithWarband) .. "|r")
+    
+    yOffset = yOffset + 100
     
     -- ===== SORT CHARACTERS: FAVORITES → REGULAR =====
     local favorites = {}
