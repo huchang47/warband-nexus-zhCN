@@ -654,6 +654,20 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
+    -- Information button
+    local infoBtn = CreateFrame("Button", nil, nav)
+    infoBtn:SetSize(28, 28)
+    infoBtn:SetPoint("RIGHT", nav, "RIGHT", -48, 0)
+    infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
+    infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
+    infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
+    infoBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Information")
+        GameTooltip:Show()
+    end)
+    infoBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    
     -- Settings button
     local settingsBtn = CreateFrame("Button", nil, nav)
     settingsBtn:SetSize(28, 28)
@@ -1288,3 +1302,4 @@ function WarbandNexus:RefreshMainWindow() self:RefreshUI() end
 function WarbandNexus:RefreshMainWindowContent() self:RefreshUI() end
 function WarbandNexus:ShowDepositQueueUI() self:Print("Coming soon!") end
 function WarbandNexus:RefreshDepositQueueUI() end
+
