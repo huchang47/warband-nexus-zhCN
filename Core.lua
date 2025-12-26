@@ -343,6 +343,10 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
+    -- M+ completion events (for cache updates)
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED")  -- Fires when M+ run completes
+    self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD")  -- Fires when new best time
+    
     -- Combat protection for UI (taint prevention)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")  -- Leaving combat
@@ -1847,6 +1851,36 @@ function WarbandNexus:OnReputationChanged()
             end)
         end
     end
+end
+
+--[[
+    Called when M+ dungeon run completes
+    Update PvE cache with new data
+]]
+function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
+    -- Re-collect PvE data for current character
+    local pveData = self:CollectPvEData()
+    
+    -- Update cache
+    local key = self:GetCharacterKey()
+    if self.db.global.characters[key] then
+        self.db.global.characters[key].pve = pveData
+        self.db.global.characters[key].lastSeen = time()
+    end
+    
+    -- Refresh UI if PvE tab is visible
+    if self.UI and self.UI.activeTab == "pve" then
+        self:RefreshUI()
+    end
+end
+
+--[[
+    Called when new weekly M+ record is set
+    Update PvE cache with new data
+]]
+function WarbandNexus:MYTHIC_PLUS_NEW_WEEKLY_RECORD()
+    -- Same logic as CHALLENGE_MODE_COMPLETED
+    self:CHALLENGE_MODE_COMPLETED()
 end
 
 --[[

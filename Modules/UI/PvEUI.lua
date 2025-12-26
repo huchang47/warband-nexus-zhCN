@@ -8,6 +8,7 @@ local WarbandNexus = ns.WarbandNexus
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
+local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -15,6 +16,21 @@ end
 -- Performance: Local function references
 local format = string.format
 local date = date
+
+-- Expand/Collapse State Management
+local expandedStates = {}
+
+local function IsExpanded(key, defaultState)
+    if expandedStates[key] == nil then
+        expandedStates[key] = defaultState
+    end
+    return expandedStates[key]
+end
+
+local function ToggleExpand(key, newState)
+    expandedStates[key] = newState
+    WarbandNexus:RefreshUI()
+end
 
 --============================================================================
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
@@ -254,33 +270,43 @@ function WarbandNexus:DrawPvEProgress(parent)
         return yOffset + 240
     end
     
-    -- ===== CHARACTER CARDS (Favorites first, then regular) =====
+    -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         local isFavorite = self:IsFavoriteCharacter(charKey)
+        local pve = char.pve or {}
         
-        -- Character card
-        local charCard = CreateCard(parent, 0) -- Height will be set dynamically
-        charCard:SetPoint("TOPLEFT", 10, -yOffset)
-        charCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        -- Smart expand: expand if has unclaimed vault rewards
+        local charExpandKey = "pve-char-" .. charKey
+        local hasVaultReward = pve.hasUnclaimedRewards or false
+        local charExpanded = IsExpanded(charExpandKey, hasVaultReward)
         
-        local cardYOffset = 12
+        -- Create collapsible header
+        local charHeader, charBtn = CreateCollapsibleHeader(
+            parent,
+            "", -- Empty text, we'll add it manually
+            charExpandKey,
+            charExpanded,
+            function(isExpanded) ToggleExpand(charExpandKey, isExpanded) end
+        )
+        charHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        -- Favorite button (star icon)
-        local favButton = CreateFrame("Button", nil, charCard)
-        favButton:SetSize(20, 20)
-        favButton:SetPoint("TOPLEFT", 15, -cardYOffset)
+        yOffset = yOffset + 35
+        
+        -- Favorite button (left side, next to collapse button)
+        local favButton = CreateFrame("Button", nil, charHeader)
+        favButton:SetSize(18, 18)
+        favButton:SetPoint("LEFT", charBtn, "RIGHT", 4, 0)
         
         local favIcon = favButton:CreateTexture(nil, "ARTWORK")
         favIcon:SetAllPoints()
         if isFavorite then
-            -- Filled gold star (same texture, just colored)
             favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
             favIcon:SetDesaturated(false)
-            favIcon:SetVertexColor(1, 0.84, 0)  -- Gold color
+            favIcon:SetVertexColor(1, 0.84, 0)
         else
-            -- Empty gray star (same texture, desaturated)
             favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
             favIcon:SetDesaturated(true)
             favIcon:SetVertexColor(0.5, 0.5, 0.5)
@@ -290,189 +316,101 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         favButton:SetScript("OnClick", function(btn)
             local newStatus = WarbandNexus:ToggleFavoriteCharacter(btn.charKey)
-            -- Update icon
             if newStatus then
-                -- Gold star (same texture, just colored)
                 btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
                 btn.icon:SetDesaturated(false)
                 btn.icon:SetVertexColor(1, 0.84, 0)
             else
-                -- Gray star (same texture, desaturated)
                 btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
                 btn.icon:SetDesaturated(true)
                 btn.icon:SetVertexColor(0.5, 0.5, 0.5)
             end
-            -- Refresh to re-sort
             WarbandNexus:RefreshUI()
         end)
         
         favButton:SetScript("OnEnter", function(btn)
             GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
             if isFavorite then
-                GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
+                GameTooltip:SetText("|cffffd700Favorite|r\nClick to remove")
             else
-                GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
+                GameTooltip:SetText("Add to favorites")
             end
             GameTooltip:Show()
         end)
+        favButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
-        favButton:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-        
-        -- Character header (shifted right to make room for star)
-        local charHeader = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        charHeader:SetPoint("TOPLEFT", 42, -cardYOffset)  -- Shifted right
-        charHeader:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888Lv %d|r", 
+        -- Character name text (after favorite button, class colored)
+        local charNameText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        charNameText:SetPoint("LEFT", favButton, "RIGHT", 6, 0)
+        charNameText:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888Lv %d|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name, char.level or 1))
         
-        -- Great Vault Ready Indicator (next to character name)
-        local pve = char.pve or {}
-        local hasVaultReward = false
-        
-        -- Check TWO conditions:
-        -- 1. Has unclaimed rewards from LAST week (opened vault but didn't loot)
-        -- 2. Has at least one slot complete THIS week (progress >= threshold)
-        
-        if pve.hasUnclaimedRewards then
-            hasVaultReward = true
-        elseif pve.greatVault and #pve.greatVault > 0 then
-            -- Check if any vault activity is complete (at least one slot ready)
-            for _, activity in ipairs(pve.greatVault) do
-                local progress = activity.progress or 0
-                local threshold = activity.threshold or 0
-                if progress >= threshold and threshold > 0 then
-                    hasVaultReward = true
-                    break
-                end
-            end
-        end
-        
+        -- Vault badge (right side of header)
         if hasVaultReward then
-            -- Vault Ready container
-            local vaultContainer = CreateFrame("Frame", nil, charCard)
-            vaultContainer:SetSize(120, 20)
-            vaultContainer:SetPoint("LEFT", charHeader, "RIGHT", 10, 0)
+            local vaultContainer = CreateFrame("Frame", nil, charHeader)
+            vaultContainer:SetSize(110, 20)
+            vaultContainer:SetPoint("RIGHT", -10, 0)
             
-            -- Treasure icon
             local vaultIcon = vaultContainer:CreateTexture(nil, "ARTWORK")
-            vaultIcon:SetSize(18, 18)
+            vaultIcon:SetSize(16, 16)
             vaultIcon:SetPoint("LEFT", 0, 0)
             vaultIcon:SetTexture("Interface\\Icons\\achievement_guildperk_bountifulbags")
             
-            -- "Great Vault" text
             local vaultText = vaultContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             vaultText:SetPoint("LEFT", vaultIcon, "RIGHT", 4, 0)
             vaultText:SetText("Great Vault")
             vaultText:SetTextColor(0.9, 0.9, 0.9)
             
-            -- Green checkmark
             local checkmark = vaultContainer:CreateTexture(nil, "OVERLAY")
-            checkmark:SetSize(16, 16)
+            checkmark:SetSize(14, 14)
             checkmark:SetPoint("LEFT", vaultText, "RIGHT", 4, 0)
             checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+        end
+        
+        -- 3 Cards (only when expanded)
+        if charExpanded then
+            local cardContainer = CreateFrame("Frame", nil, parent)
+            cardContainer:SetPoint("TOPLEFT", 10, -yOffset)
+            cardContainer:SetPoint("TOPRIGHT", -10, -yOffset)
             
-            -- Tooltip on hover
-            vaultContainer:EnableMouse(true)
-            vaultContainer:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("|cff00ff00Weekly Vault Ready!|r")
-                
-                -- Show reason (unclaimed vs. complete)
-                if pve.hasUnclaimedRewards then
-                    GameTooltip:AddLine("This character has UNCLAIMED rewards from last week", 1, 1, 1)
-                    GameTooltip:AddLine(" ", 1, 1, 1)
-                    GameTooltip:AddLine("|cffff9900Open the Great Vault to claim your rewards!|r", 1, 0.8, 0)
-                else
-                    GameTooltip:AddLine("This character has completed vault activities", 1, 1, 1)
-                    GameTooltip:AddLine(" ", 1, 1, 1)
-                    GameTooltip:AddLine("|cff888888Rewards will be available after weekly reset|r", 0.7, 0.7, 0.7)
-                end
-                
-                -- Show last update time
-                local lastSeen = char.lastSeen or 0
-                if lastSeen > 0 then
-                    local diff = time() - lastSeen
-                    local timeText = ""
-                    if diff < 60 then
-                        timeText = "Just now"
-                    elseif diff < 3600 then
-                        timeText = math.floor(diff / 60) .. "m ago"
-                    elseif diff < 86400 then
-                        timeText = math.floor(diff / 3600) .. "h ago"
-                    else
-                        timeText = math.floor(diff / 86400) .. "d ago"
-                    end
-                    GameTooltip:AddLine(" ", 1, 1, 1)
-                    GameTooltip:AddLine("|cff888888Last updated: " .. timeText .. "|r", 0.7, 0.7, 0.7)
-                end
-                
-                GameTooltip:Show()
-            end)
-            vaultContainer:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-        
-        -- Last updated time
-        local lastSeen = char.lastSeen or 0
-        local lastSeenText = ""
-        if lastSeen > 0 then
-            local diff = time() - lastSeen
-            if diff < 60 then
-                lastSeenText = "Updated: Just now"
-            elseif diff < 3600 then
-                lastSeenText = string.format("Updated: %dm ago", math.floor(diff / 60))
-            elseif diff < 86400 then
-                lastSeenText = string.format("Updated: %dh ago", math.floor(diff / 3600))
-            else
-                lastSeenText = string.format("Updated: %dd ago", math.floor(diff / 86400))
+            local totalWidth = parent:GetWidth() - 20
+            local card1Width = totalWidth * 0.30
+            local card2Width = totalWidth * 0.35
+            local card3Width = totalWidth * 0.35
+            local cardHeight = 200  -- Reduced from 280 to 200
+            local cardSpacing = 5
+            
+            -- === CARD 1: GREAT VAULT (30%) ===
+            local vaultCard = CreateCard(cardContainer, cardHeight)
+            vaultCard:SetPoint("TOPLEFT", 0, 0)
+            vaultCard:SetWidth(card1Width - cardSpacing)
+            
+            -- Helper function to get WoW icon textures for vault activity types
+            local function GetVaultTypeIcon(typeName)
+                local icons = {
+                    ["Raid"] = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+                    ["M+"] = "Interface\\Icons\\Achievement_ChallengeMode_Gold",
+                    ["World"] = "Interface\\Icons\\INV_Misc_Map_01"
+                }
+                return icons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark"
             end
-        else
-            lastSeenText = "Never updated"
-        end
-        
-        local lastSeenLabel = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        lastSeenLabel:SetPoint("TOPRIGHT", -15, -cardYOffset)
-        lastSeenLabel:SetText("|cff888888" .. lastSeenText .. "|r")
-        
-        cardYOffset = cardYOffset + 25
-        
-        -- Create three-column layout for symmetrical display
-        local columnWidth = (width - 60) / 3  -- 3 equal columns with spacing
-        local columnStartY = cardYOffset
-        
-        -- === COLUMN 1: GREAT VAULT ===
-        local vaultX = 15
-        local vaultY = columnStartY
-        
-        local vaultTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        vaultTitle:SetPoint("TOPLEFT", vaultX, -vaultY)
-        vaultTitle:SetText("|cffffd700Great Vault|r")
-        vaultY = vaultY + 22  -- Increased spacing after title
+            
+            local vaultY = 15  -- Start padding
         
         if pve.greatVault and #pve.greatVault > 0 then
-            -- Group by type using Enum values
             local vaultByType = {}
             for _, activity in ipairs(pve.greatVault) do
                 local typeName = "Unknown"
                 local typeNum = activity.type
                 
-                -- Try Enum first if available, fallback to numeric comparison
                 if Enum and Enum.WeeklyRewardChestThresholdType then
-                    if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then
-                        typeName = "Raid"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then
-                        typeName = "M+"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then
-                        typeName = "PvP"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then
-                        typeName = "World"
+                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
                     end
                 else
-                    -- Fallback: numeric comparison
-                    -- Based on C_WeeklyRewards.ActivityType
                     if typeNum == 1 then typeName = "Raid"
                     elseif typeNum == 2 then typeName = "M+"
                     elseif typeNum == 3 then typeName = "PvP"
@@ -484,359 +422,262 @@ function WarbandNexus:DrawPvEProgress(parent)
                 table.insert(vaultByType[typeName], activity)
             end
             
-            -- Display in order: Raid, M+, World, PvP
-            local sortedTypes = {"Raid", "M+", "World", "PvP"}
+            -- Column Layout Constants
+            local cardWidth = card1Width - cardSpacing
+            local typeColumnWidth = 70  -- Icon + label width
+            local slotsAreaWidth = cardWidth - typeColumnWidth - 30  -- 30px for padding
+            local slotWidth = slotsAreaWidth / 3  -- Three slots evenly distributed
+            
+            -- Table Header
+            local headerBg = vaultCard:CreateTexture(nil, "BACKGROUND")
+            headerBg:SetPoint("TOPLEFT", 10, -vaultY)
+            headerBg:SetPoint("TOPRIGHT", -10, -vaultY)
+            headerBg:SetHeight(22)
+            headerBg:SetColorTexture(0.15, 0.15, 0.2, 0.8)
+            
+            local headerText = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            headerText:SetPoint("TOPLEFT", 15, -vaultY - 4)
+            headerText:SetText("|cffffff00Type|r")
+            
+            -- Slot column headers
+            for i = 1, 3 do
+                local slotHeader = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local xPos = 10 + typeColumnWidth + ((i - 1) * slotWidth) + (slotWidth / 2)
+                slotHeader:SetPoint("TOPLEFT", xPos, -vaultY - 4)
+                slotHeader:SetText("|cffffff00" .. i .. "|r")
+            end
+            
+            vaultY = vaultY + 27
+            
+            -- Calculate available space for rows
+            local cardContentHeight = cardHeight - vaultY - 10  -- 10px bottom padding
+            local numTypes = 3  -- Raid, M+, World (PvP removed)
+            local rowHeight = math.floor(cardContentHeight / numTypes)
+            
+            -- Default thresholds for each activity type (when no data exists)
+            local defaultThresholds = {
+                ["Raid"] = {2, 4, 6},
+                ["M+"] = {1, 4, 8},
+                ["World"] = {3, 3, 3},
+                ["PvP"] = {3, 3, 3}
+            }
+            
+            -- Table Rows (3 TYPES - evenly distributed)
+            local sortedTypes = {"Raid", "M+", "World"}
+            local rowIndex = 0
             for _, typeName in ipairs(sortedTypes) do
                 local activities = vaultByType[typeName]
-                if activities then
-                    -- Create label (fixed width for alignment)
-                    local label = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    label:SetPoint("TOPLEFT", vaultX + 10, -vaultY)
-                    label:SetWidth(50) -- Fixed width for type name
-                    label:SetText(typeName .. ":")
-                    label:SetTextColor(0.85, 0.85, 0.85)
-                    label:SetJustifyH("LEFT")
-                    label:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
-                    
-                    -- Create progress display (aligned to the right of label)
-                    local progressLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    progressLine:SetPoint("TOPLEFT", vaultX + 60, -vaultY)
-                    progressLine:SetWidth(columnWidth - 65)
-                    
-                    local progressParts = {}
-                    for _, a in ipairs(activities) do
-                        -- Cap progress at threshold (don't show 3/2, show 2/2)
-                        local progress = a.progress or 0
-                        local threshold = a.threshold or 0
-                        if progress > threshold and threshold > 0 then
-                            progress = threshold
-                        end
-                        
-                        local pct = threshold > 0 and (progress / threshold * 100) or 0
-                        local color = pct >= 100 and "|cff00ff00" or "|cffffcc00"
-                        table.insert(progressParts, string.format("%s%d/%d|r", color, progress, threshold))
-                    end
-                    progressLine:SetText(table.concat(progressParts, " "))
-                    progressLine:SetTextColor(0.85, 0.85, 0.85)
-                    progressLine:SetJustifyH("LEFT")
-                    progressLine:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
-                    vaultY = vaultY + 17  -- Slightly more spacing between lines
-                end
-            end
-        else
-            local noVault = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noVault:SetPoint("TOPLEFT", vaultX + 10, -vaultY)
-            noVault:SetText("|cff666666No data|r")
-            noVault:SetTextColor(0.5, 0.5, 0.5)
-            vaultY = vaultY + 15
-        end
-        
-        -- === COLUMN 2: MYTHIC+ ===
-        local mplusX = 15 + columnWidth
-        local mplusY = columnStartY
-        
-        local mplusTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        mplusTitle:SetPoint("TOPLEFT", mplusX, -mplusY)
-        mplusTitle:SetText("|cffa335eeM+ Keystone|r")
-        mplusY = mplusY + 22  -- Increased spacing after title
-        
-        if pve.mythicPlus and (pve.mythicPlus.keystone or pve.mythicPlus.weeklyBest or pve.mythicPlus.runsThisWeek) then
-            -- Current keystone
-            if pve.mythicPlus.keystone then
-                local keystoneInfo = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                keystoneInfo:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
-                keystoneInfo:SetWidth(columnWidth - 20)
-                keystoneInfo:SetText(string.format("|cffff8000%s +%d|r", 
-                    pve.mythicPlus.keystone.name or "Unknown", 
-                    pve.mythicPlus.keystone.level or 0))
-                keystoneInfo:SetJustifyH("LEFT")
-                mplusY = mplusY + 15
-            end
-            
-            -- Weekly stats
-            if pve.mythicPlus.weeklyBest and pve.mythicPlus.weeklyBest > 0 then
-                local bestLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                bestLine:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
-                bestLine:SetText(string.format("Best: |cff00ff00+%d|r", pve.mythicPlus.weeklyBest))
-                bestLine:SetTextColor(0.8, 0.8, 0.8)
-                mplusY = mplusY + 15
-            end
-            
-            if pve.mythicPlus.runsThisWeek and pve.mythicPlus.runsThisWeek > 0 then
-                local runsLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                runsLine:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
-                runsLine:SetText(string.format("Runs: |cffa335ee%d|r", pve.mythicPlus.runsThisWeek))
-                runsLine:SetTextColor(0.8, 0.8, 0.8)
-                mplusY = mplusY + 15
-            end
-        else
-            local noMplus = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noMplus:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
-            noMplus:SetText("|cff666666No keystone|r")
-            noMplus:SetTextColor(0.5, 0.5, 0.5)
-            mplusY = mplusY + 15
-        end
-        
-        -- === COLUMN 3: RAID LOCKOUTS ===
-        local lockoutX = 15 + (columnWidth * 2)
-        local lockoutY = columnStartY
-        
-        local lockoutTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockoutTitle:SetPoint("TOPLEFT", lockoutX, -lockoutY)
-        lockoutTitle:SetText("|cff0070ddRaid Lockouts|r")
-        lockoutY = lockoutY + 24  -- Increased spacing after title
-        
-        if pve.lockouts and #pve.lockouts > 0 then
-            -- Group lockouts by raid name
-            local raidGroups = {}
-            local raidOrder = {}
-            
-            for _, lockout in ipairs(pve.lockouts) do
-                local raidName = lockout.name or "Unknown"
-                raidName = raidName:gsub("%s*%(.*%)%s*$", "")
-                raidName = raidName:gsub("%s*%-.*$", "")
-                raidName = raidName:gsub("%s+$", ""):gsub("^%s+", "")
                 
-                if not raidGroups[raidName] then
-                    raidGroups[raidName] = {}
-                    table.insert(raidOrder, raidName)
-                end
-                table.insert(raidGroups[raidName], lockout)
-            end
-            
-            -- Collapsible raid grid (3x4 layout)
-            local boxWidth = 50
-            local boxHeight = 24
-            local boxSpacing = 4
-            local cols = 4
-            local rows = 3
-            local maxVisible = cols * rows -- 12 raids visible
-            local startIndex = charCard.raidScrollOffset or 0
-            
-            -- Scroll buttons container
-            if #raidOrder > maxVisible then
-                if not charCard.scrollLeftBtn then
-                    local leftBtn = CreateFrame("Button", nil, charCard, "BackdropTemplate")
-                    leftBtn:SetSize(16, (rows * (boxHeight + boxSpacing)) - boxSpacing)
-                    leftBtn:SetPoint("TOPLEFT", lockoutX + 10 + (cols * (boxWidth + boxSpacing)), -lockoutY)
-                    leftBtn:SetBackdrop({
-                        bgFile = "Interface\\Buttons\\WHITE8x8",
-                        edgeFile = "Interface\\Buttons\\WHITE8x8",
-                        edgeSize = 1,
-                    })
-                    leftBtn:SetBackdropColor(0.1, 0.1, 0.12, 1)
-                    leftBtn:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
-                    
-                    local arrow = leftBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    arrow:SetPoint("CENTER")
-                    arrow:SetText(">")
-                    arrow:SetTextColor(0.7, 0.7, 0.7)
-                    
-                    leftBtn:SetScript("OnClick", function()
-                        charCard.raidScrollOffset = (charCard.raidScrollOffset or 0) + maxVisible
-                        if charCard.raidScrollOffset >= #raidOrder then
-                            charCard.raidScrollOffset = 0
-                        end
-                        self:RefreshUI()
-                    end)
-                    
-                    leftBtn:SetScript("OnEnter", function(btn)
-                        btn:SetBackdropColor(0.15, 0.15, 0.18, 1)
-                    end)
-                    leftBtn:SetScript("OnLeave", function(btn)
-                        btn:SetBackdropColor(0.1, 0.1, 0.12, 1)
-                    end)
-                    
-                    charCard.scrollLeftBtn = leftBtn
-                end
-                charCard.scrollLeftBtn:Show()
-            elseif charCard.scrollLeftBtn then
-                charCard.scrollLeftBtn:Hide()
-            end
-            
-            local raidCount = 0
-            for i = startIndex + 1, math.min(startIndex + maxVisible, #raidOrder) do
-                local raidName = raidOrder[i]
-                local difficulties = raidGroups[raidName]
+                -- Create row frame container for better positioning
+                local rowFrame = CreateFrame("Frame", nil, vaultCard)
+                rowFrame:SetPoint("TOPLEFT", 10, -vaultY)
+                rowFrame:SetPoint("TOPRIGHT", -10, -vaultY)
+                rowFrame:SetHeight(rowHeight - 2)
                 
-                local col = raidCount % cols
-                local row = math.floor(raidCount / cols)
-                
-                -- Create raid box container
-                local raidBar = CreateFrame("Button", nil, charCard, "BackdropTemplate")
-                raidBar:SetSize(boxWidth, boxHeight)
-                raidBar:SetPoint("TOPLEFT", lockoutX + 10 + (col * (boxWidth + boxSpacing)), -(lockoutY + (row * (boxHeight + boxSpacing))))
-                
-                raidBar:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
-                })
-                raidBar:SetBackdropColor(0.10, 0.10, 0.12, 1)
-                raidBar:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
-                
-                -- Raid name abbreviated (centered)
-                local initials = ""
-                for word in raidName:gmatch("%S+") do
-                    initials = initials .. word:sub(1, 1)
-                    if #initials >= 3 then break end
+                -- Row background (alternating colors)
+                local rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+                rowBg:SetAllPoints()
+                if rowIndex % 2 == 0 then
+                    rowBg:SetColorTexture(0.1, 0.1, 0.12, 0.5)
+                else
+                    rowBg:SetColorTexture(0.08, 0.08, 0.1, 0.5)
                 end
                 
-                local nameLabel = raidBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                nameLabel:SetPoint("CENTER", 0, 0)
-                nameLabel:SetText(initials:upper())
-                nameLabel:SetTextColor(0.8, 0.8, 0.8)
-                nameLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+                -- Icon texture (left side)
+                local iconTexture = rowFrame:CreateTexture(nil, "ARTWORK")
+                iconTexture:SetSize(16, 16)
+                iconTexture:SetPoint("LEFT", 5, 0)
+                iconTexture:SetTexture(GetVaultTypeIcon(typeName))
                 
-                -- Expanded state
-                raidBar.expanded = false
-                raidBar.difficulties = difficulties
-                raidBar.raidName = raidName
+                -- Type label (next to icon)
+                local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                label:SetPoint("LEFT", 25, 0)  -- 5px offset + 16px icon + 4px padding
+                label:SetText(string.format("|cffffffff%s|r", typeName))
+                
+                -- Create individual slot frames for proper alignment
+                local thresholds = defaultThresholds[typeName] or {3, 3, 3}
+                
+                for slotIndex = 1, 3 do
+                    -- Create slot container frame
+                    local slotFrame = CreateFrame("Frame", nil, rowFrame)
+                    local xOffset = typeColumnWidth + ((slotIndex - 1) * slotWidth)
+                    slotFrame:SetSize(slotWidth, rowHeight - 2)
+                    slotFrame:SetPoint("LEFT", rowFrame, "LEFT", xOffset, 0)
                     
-                -- Click to expand/collapse
-                raidBar:SetScript("OnClick", function(self)
-                    self.expanded = not self.expanded
+                    -- Get activity data for this slot
+                    local activity = activities and activities[slotIndex]
+                    local threshold = (activity and activity.threshold) or thresholds[slotIndex] or 0
+                    local progress = activity and activity.progress or 0
+                    local isComplete = (threshold > 0 and progress >= threshold)
                     
-                    if self.expanded then
-                        -- Show difficulties
-                        if not self.diffFrame then
-                            local diffFrame = CreateFrame("Frame", nil, self, "BackdropTemplate")
-                            diffFrame:SetSize(boxWidth + 14, 38)
-                            diffFrame:SetPoint("BOTTOM", self, "TOP", 0, 4)
-                            diffFrame:SetBackdrop({
-                                bgFile = "Interface\\Buttons\\WHITE8x8",
-                                edgeFile = "Interface\\Buttons\\WHITE8x8",
-                                edgeSize = 1,
-                            })
-                            diffFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
-                            diffFrame:SetBackdropBorderColor(0.20, 0.20, 0.25, 1)
-                            self.diffFrame = diffFrame
-                            
-                            -- Map difficulties
-                            local diffMap = {L = nil, N = nil, H = nil, M = nil}
-                            for _, lockout in ipairs(self.difficulties) do
-                                local diffName = lockout.difficultyName or "Normal"
-                                if diffName:find("Mythic") then
-                                    diffMap.M = lockout
-                                elseif diffName:find("Heroic") then
-                                    diffMap.H = lockout
-                                elseif diffName:find("Raid Finder") or diffName:find("LFR") then
-                                    diffMap.L = lockout
-                                else
-                                    diffMap.N = lockout
-                                end
-                            end
-                            
-                            -- 2x2 grid layout: L N / H M (bigger cells)
-                            local diffOrder = {
-                                {key = "L", x = 0, y = 0, color = {1, 0.5, 0}},
-                                {key = "N", x = 32, y = 0, color = {0.3, 0.9, 0.3}},
-                                {key = "H", x = 0, y = -19, color = {0, 0.44, 0.87}},
-                                {key = "M", x = 32, y = -19, color = {0.64, 0.21, 0.93}}
-                            }
-                            
-                            for i, diff in ipairs(diffOrder) do
-                                local lockout = diffMap[diff.key]
-                                local cell = CreateFrame("Frame", nil, diffFrame, "BackdropTemplate")
-                                cell:SetSize(30, 17)
-                                cell:SetPoint("TOPLEFT", diff.x + 2, diff.y - 2)
-                                
-                                cell:SetBackdrop({
-                                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                                    edgeSize = 1,
-                                })
-                                
-                                if lockout then
-                                    local r, g, b = diff.color[1], diff.color[2], diff.color[3]
-                                    cell:SetBackdropColor(r * 0.4, g * 0.4, b * 0.4, 1)
-                                    cell:SetBackdropBorderColor(r, g, b, 1)
-                                    
-                                    local progress = lockout.progress or 0
-                                    local total = lockout.total or 0
-                                    if progress > total and total > 0 then progress = total end
-                                    
-                                    local cellText = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                    cellText:SetPoint("CENTER", 0, 0)
-                                    cellText:SetText(diff.key)
-                                    cellText:SetTextColor(r, g, b, 1)
-                                    cellText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
-                                    
-                                    -- Tooltip
-                                    cell:EnableMouse(true)
-                                    cell:SetScript("OnEnter", function(c)
-                                        GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
-                                        GameTooltip:SetText(self.raidName, 1, 1, 1)
-                                        GameTooltip:AddLine(" ")
-                                        local diffNames = {L = "LFR", N = "Normal", H = "Heroic", M = "Mythic"}
-                                        GameTooltip:AddDoubleLine("Difficulty:", diffNames[diff.key], nil, nil, nil, r, g, b)
-                                        local progressPct = total > 0 and (progress / total * 100) or 0
-                                        local pc = progress == total and {0, 1, 0} or {1, 1, 0}
-                                        GameTooltip:AddDoubleLine("Progress:", string.format("%d/%d (%.0f%%)", progress, total, progressPct), nil, nil, nil, pc[1], pc[2], pc[3])
-                                        if lockout.reset then
-                                            local timeLeft = lockout.reset - time()
-                                            if timeLeft > 0 then
-                                                local days = math.floor(timeLeft / 86400)
-                                                local hours = math.floor((timeLeft % 86400) / 3600)
-                                                local resetStr = days > 0 and string.format("%dd %dh", days, hours) or string.format("%dh", hours)
-                                                GameTooltip:AddDoubleLine("Resets in:", resetStr, nil, nil, nil, 1, 1, 1)
-                                            end
-                                        end
-                                        if lockout.extended then
-                                            GameTooltip:AddLine(" ")
-                                            GameTooltip:AddLine("|cffff8000[Extended]|r", 1, 0.5, 0)
-                                        end
-                                        GameTooltip:Show()
-                                    end)
-                                    cell:SetScript("OnLeave", function(c) GameTooltip:Hide() end)
-                                else
-                                    cell:SetBackdropColor(0.05, 0.05, 0.05, 0.5)
-                                    cell:SetBackdropBorderColor(0.15, 0.15, 0.15, 0.5)
-                                    local cellText = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                    cellText:SetPoint("CENTER", 0, 0)
-                                    cellText:SetText(diff.key)
-                                    cellText:SetTextColor(0.3, 0.3, 0.3, 0.5)
-                                    cellText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
-                                end
-                            end
-                        end
-                        self.diffFrame:Show()
+                    if activity and isComplete then
+                        -- Complete: Show checkmark (centered)
+                        local checkIcon = slotFrame:CreateTexture(nil, "OVERLAY")
+                        checkIcon:SetSize(14, 14)
+                        checkIcon:SetPoint("CENTER", 0, 0)
+                        checkIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    elseif activity and not isComplete then
+                        -- Incomplete: Show progress numbers (centered)
+                        local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        progressText:SetPoint("CENTER", 0, 0)
+                        progressText:SetText(string.format("|cffffcc00%d|r|cffffffff/|r|cffffcc00%d|r", 
+                            progress, threshold))
                     else
-                        -- Hide difficulties
-                        if self.diffFrame then
-                            self.diffFrame:Hide()
+                        -- No data: Show empty with threshold (centered)
+                        local emptyText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        emptyText:SetPoint("CENTER", 0, 0)
+                        if threshold > 0 then
+                            emptyText:SetText(string.format("|cff888888%d|r|cff666666/|r|cff888888%d|r", 0, threshold))
+                        else
+                            emptyText:SetText("|cff666666-|r")
                         end
                     end
-                end)
+                end
                 
-                -- Hover highlight
-                raidBar:SetScript("OnEnter", function(self)
-                    self:SetBackdropColor(0.15, 0.15, 0.18, 1)
-                end)
-                raidBar:SetScript("OnLeave", function(self)
-                    self:SetBackdropColor(0.10, 0.10, 0.12, 1)
-                end)
-                
-                raidCount = raidCount + 1
+                vaultY = vaultY + rowHeight
+                rowIndex = rowIndex + 1
+            end
+        else
+                local noVault = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
+            noVault:SetText("|cff666666No vault data|r")
             end
             
-            local actualRows = math.ceil(math.min(raidCount, maxVisible) / cols)
-            lockoutY = lockoutY + (actualRows * (boxHeight + boxSpacing)) + 5
-        else
-            local noLockouts = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noLockouts:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
-            noLockouts:SetText("|cff666666No lockouts|r")
-            noLockouts:SetTextColor(0.5, 0.5, 0.5)
-            lockoutY = lockoutY + 15
+            -- === CARD 2: M+ DUNGEONS (35%) ===
+            local mplusCard = CreateCard(cardContainer, cardHeight)
+            mplusCard:SetPoint("TOPLEFT", card1Width, 0)
+            mplusCard:SetWidth(card2Width - cardSpacing)
+            
+            local mplusY = 15
+            
+            -- Overall Score (larger, at top)
+            local totalScore = pve.mythicPlus.overallScore or 0
+            local scoreText = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            scoreText:SetPoint("TOP", mplusCard, "TOP", 0, -mplusY)
+            scoreText:SetText(string.format("|cffffd700Overall Score: %d|r", totalScore))
+            mplusY = mplusY + 35  -- Space before grid
+            
+            if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
+                local iconsPerRow = 4
+                local iconSize = 42  -- Increased from 35 to 42
+                local iconSpacing = 12  -- Increased from 8 to 12 for better distribution
+                local totalDungeons = #pve.mythicPlus.dungeons
+                
+                -- Calculate grid dimensions
+                local gridWidth = (iconsPerRow * iconSize) + ((iconsPerRow - 1) * iconSpacing)
+                local cardWidth = card2Width - cardSpacing
+                local startX = (cardWidth - gridWidth) / 2  -- Center the grid
+                local gridY = mplusY
+                
+                for i, dungeon in ipairs(pve.mythicPlus.dungeons) do
+                    local col = (i - 1) % iconsPerRow
+                    local row = math.floor((i - 1) / iconsPerRow)
+                    
+                    local iconX = startX + (col * (iconSize + iconSpacing))
+                    local iconY = gridY + (row * (iconSize + iconSpacing + 22))  -- Adjusted for larger icons
+                    
+                    local iconFrame = CreateFrame("Frame", nil, mplusCard)
+                    iconFrame:SetSize(iconSize, iconSize)
+                    iconFrame:SetPoint("TOPLEFT", iconX, -iconY)
+                    iconFrame:EnableMouse(true)
+                    
+                    local texture = iconFrame:CreateTexture(nil, "ARTWORK")
+                    texture:SetAllPoints()
+                    if dungeon.texture then
+                        texture:SetTexture(dungeon.texture)
+                    else
+                        texture:SetColorTexture(0.2, 0.2, 0.2, 1)
+                    end
+                    
+                    if dungeon.bestLevel and dungeon.bestLevel > 0 then
+                        -- Darken background overlay for better contrast
+                        local overlay = iconFrame:CreateTexture(nil, "BORDER")
+                        overlay:SetAllPoints()
+                        overlay:SetColorTexture(0, 0, 0, 0.4)  -- Semi-transparent black
+                        
+                        -- Key level INSIDE icon (centered, larger) - using GameFont
+                        local levelText = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)  -- Centered in icon
+                        levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))  -- Gold/yellow
+                        
+                        -- Score BELOW icon - using GameFont
+                        local dungeonScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        dungeonScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
+                        dungeonScore:SetText(string.format("|cffffffff%d|r", dungeon.score or 0))
+                    else
+                        -- Gray overlay for incomplete
+                        local overlay = iconFrame:CreateTexture(nil, "BORDER")
+                        overlay:SetAllPoints()
+                        overlay:SetColorTexture(0, 0, 0, 0.6)  -- Darker for incomplete
+                        
+                        -- "Not Done" text inside icon - using GameFont
+                        local notDone = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        notDone:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+                        notDone:SetText("|cff888888?|r")  -- Question mark instead of dash
+                        
+                        -- Dash below - using GameFont
+                        local zeroScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        zeroScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
+                        zeroScore:SetText("|cff666666-|r")
+                    end
+                    
+                    iconFrame:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(dungeon.name or "Unknown", 1, 1, 1)
+                        if dungeon.bestLevel and dungeon.bestLevel > 0 then
+                            GameTooltip:AddLine(string.format("Best: |cffff8000+%d|r", dungeon.bestLevel), 1, 0.5, 0)
+                            GameTooltip:AddLine(string.format("Score: |cffffffff%d|r", dungeon.score or 0), 1, 1, 1)
+                        else
+                            GameTooltip:AddLine("|cff666666Not completed|r", 0.6, 0.6, 0.6)
+                        end
+                        GameTooltip:Show()
+                    end)
+                    iconFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+            else
+                local noData = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                noData:SetPoint("TOPLEFT", 15, -mplusY)
+                noData:SetText("|cff666666No data|r")
+            end
+            
+            -- === CARD 3: RAID LOCKOUTS (35%) ===
+            local lockoutCard = CreateCard(cardContainer, cardHeight)
+            lockoutCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
+            lockoutCard:SetWidth(card3Width)
+            
+            local lockoutY = 12
+            local lockoutTitle = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            lockoutTitle:SetPoint("TOPLEFT", 10, -lockoutY)
+            lockoutTitle:SetText("|cff0070ddRaid Lockouts|r")
+            lockoutY = lockoutY + 22
+            
+            if pve.lockouts and #pve.lockouts > 0 then
+                for _, lockout in ipairs(pve.lockouts) do
+                    local raidName = lockout.name or "Unknown"
+                    local progress = lockout.progress or 0
+                    local total = lockout.total or 0
+                    local diffName = lockout.difficultyName or "Normal"
+                    
+                    local lockoutText = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    lockoutText:SetPoint("TOPLEFT", 15, -lockoutY)
+                    lockoutText:SetWidth(card3Width - 30)
+                    lockoutText:SetJustifyH("LEFT")
+                    lockoutText:SetText(string.format("%s: |cffffcc00%d/%d|r %s", raidName, progress, total, diffName))
+                    lockoutY = lockoutY + 15
+                    
+                    if lockoutY > cardHeight - 20 then break end
+                end
+            else
+                local noLockouts = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                noLockouts:SetPoint("TOPLEFT", 15, -lockoutY)
+                noLockouts:SetText("|cff666666No lockouts|r")
+            end
+            
+            cardContainer:SetHeight(cardHeight)
+            yOffset = yOffset + cardHeight + 10
         end
         
-        -- Calculate final height (use tallest column)
-        local maxColumnHeight = math.max(vaultY, mplusY, lockoutY)
-        cardYOffset = maxColumnHeight + 10
-        
-        -- Set card height
-        charCard:SetHeight(cardYOffset)
-        yOffset = yOffset + cardYOffset + 10
+        yOffset = yOffset + 5
     end
     
     return yOffset + 20

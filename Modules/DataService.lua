@@ -494,6 +494,53 @@ function WarbandNexus:CollectPvEData()
                 pve.mythicPlus.runsThisWeek = 0
             end
         end
+        
+        -- ===== MYTHIC+ DUNGEON PROGRESS =====
+        if C_ChallengeMode then
+            pve.mythicPlus.dungeons = {}
+            pve.mythicPlus.overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+            
+            -- Get all map scores (returns indexed table with mapChallengeModeID keys)
+            local allScores = C_ChallengeMode.GetMapScoreInfo() or {}
+            
+            -- Create lookup table by mapChallengeModeID
+            local scoresByMapID = {}
+            for _, scoreData in ipairs(allScores) do
+                if scoreData.mapChallengeModeID then
+                    scoresByMapID[scoreData.mapChallengeModeID] = scoreData
+                end
+            end
+            
+            local mapTable = C_ChallengeMode.GetMapTable()
+            if mapTable then
+                for _, mapID in ipairs(mapTable) do
+                    local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+                    if name then
+                        local bestLevel = 0
+                        local bestScore = 0
+                        local isCompleted = false
+                        
+                        -- Lookup score data for this mapID
+                        local scoreData = scoresByMapID[mapID]
+                        if scoreData then
+                            bestLevel = scoreData.level or 0
+                            bestScore = scoreData.dungeonScore or 0
+                            isCompleted = (scoreData.completedInTime == 1) or false
+                        end
+                        
+                        -- Insert dungeon regardless of completion status
+                        table.insert(pve.mythicPlus.dungeons, {
+                            mapID = mapID,
+                            name = name,
+                            texture = texture,
+                            bestLevel = bestLevel,
+                            score = bestScore,
+                            completed = isCompleted,
+                        })
+                    end
+                end
+            end
+        end
     end
     
     return pve
