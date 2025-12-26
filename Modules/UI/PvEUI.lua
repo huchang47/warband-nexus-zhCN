@@ -645,33 +645,10 @@ function WarbandNexus:DrawPvEProgress(parent)
             lockoutCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
             lockoutCard:SetWidth(card3Width)
             
-            local lockoutY = 12
-            local lockoutTitle = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            lockoutTitle:SetPoint("TOPLEFT", 10, -lockoutY)
-            lockoutTitle:SetText("|cff0070ddRaid Lockouts|r")
-            lockoutY = lockoutY + 22
-            
-            if pve.lockouts and #pve.lockouts > 0 then
-                for _, lockout in ipairs(pve.lockouts) do
-                    local raidName = lockout.name or "Unknown"
-                    local progress = lockout.progress or 0
-                    local total = lockout.total or 0
-                    local diffName = lockout.difficultyName or "Normal"
-                    
-                    local lockoutText = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    lockoutText:SetPoint("TOPLEFT", 15, -lockoutY)
-                    lockoutText:SetWidth(card3Width - 30)
-                    lockoutText:SetJustifyH("LEFT")
-                    lockoutText:SetText(string.format("%s: |cffffcc00%d/%d|r %s", raidName, progress, total, diffName))
-                    lockoutY = lockoutY + 15
-                    
-                    if lockoutY > cardHeight - 20 then break end
-                end
-            else
-                local noLockouts = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                noLockouts:SetPoint("TOPLEFT", 15, -lockoutY)
-                noLockouts:SetText("|cff666666No lockouts|r")
-            end
+            -- Work in Progress message
+            local wipText = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            wipText:SetPoint("CENTER", lockoutCard, "CENTER", 0, 0)
+            wipText:SetText("|cffffcc00Work in Progress|r")
             
             cardContainer:SetHeight(cardHeight)
             yOffset = yOffset + cardHeight + 10
