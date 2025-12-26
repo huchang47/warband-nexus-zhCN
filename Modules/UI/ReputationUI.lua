@@ -361,6 +361,18 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     return result
 end
 
+---Truncate text if it's too long
+---@param text string Text to truncate
+---@param maxLength number Maximum length before truncation
+---@return string Truncated text
+local function TruncateText(text, maxLength)
+    if not text then return "" end
+    if string.len(text) <= maxLength then
+        return text
+    end
+    return string.sub(text, 1, maxLength - 3) .. "..."
+end
+
 --============================================================================
 -- REPUTATION ROW RENDERING
 --============================================================================
@@ -491,8 +503,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
+        nameText:SetNonSpaceWrap(true)
         nameText:SetWidth(250)  -- Fixed width for name column
-        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetText(TruncateText(reputation.name or "Unknown Faction", 35))
         nameText:SetTextColor(1, 1, 1)
     else
         -- No standing: just faction name
@@ -500,17 +513,18 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
+        nameText:SetNonSpaceWrap(true)
         nameText:SetWidth(250)  -- Fixed width for name column
-        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetText(TruncateText(reputation.name or "Unknown Faction", 35))
         nameText:SetTextColor(1, 1, 1)
     end
     
     -- Character Badge Column (filtered view only)
     if characterInfo then
         local badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        badgeText:SetPoint("LEFT", icon, "RIGHT", 285, 0)
+        badgeText:SetPoint("LEFT", icon, "RIGHT", 330, 0)
         badgeText:SetJustifyH("LEFT")
-        badgeText:SetWidth(120)
+        badgeText:SetWidth(150)
         
         if characterInfo.isAccountWide then
             badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
@@ -1250,13 +1264,9 @@ function WarbandNexus:DrawReputationTab(parent)
                     end
                 end
             end
-            
-            yOffset = yOffset + 5
         end
         end  -- End Account-Wide section expanded
         end  -- End Account-Wide section
-        
-        yOffset = yOffset + 10
         
         -- ===== CHARACTER-BASED REPUTATIONS SECTION =====
         local cbSectionKey = "filtered-section-characterbased"
@@ -1411,8 +1421,6 @@ function WarbandNexus:DrawReputationTab(parent)
                             end
                         end
                     end
-                    
-                    yOffset = yOffset + 5
                 end
             end
         end  -- End Character-Based section expanded
