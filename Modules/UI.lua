@@ -626,11 +626,11 @@ function WarbandNexus:CreateMainWindow()
     -- Create tabs with equal spacing (105px width + 5px gap = 110px spacing)
     local tabSpacing = 110
     f.tabButtons["chars"] = CreateTabButton(nav, "Characters", "chars", 10)
-    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing)
-    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing * 2)
-    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 3)
-    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 4)
-    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 5)
+    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
+    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
+    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
+    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 4)
+    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing * 5)
     f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 6)
     
     -- Function to update tab colors dynamically
