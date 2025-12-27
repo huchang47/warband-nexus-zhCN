@@ -2564,6 +2564,40 @@ function WarbandNexus:ForceScanWarbandBank()
     end
 end
 
+--[[
+    Wipe all addon data and reload UI
+    This is a destructive operation that cannot be undone
+]]
+function WarbandNexus:WipeAllData()
+    self:Print("|cffff9900Wiping all addon data...|r")
+    
+    -- Close UI first
+    if self.HideMainWindow then
+        self:HideMainWindow()
+    end
+    
+    -- Clear all caches
+    if self.ClearAllCaches then
+        self:ClearAllCaches()
+    end
+    
+    -- Reset the entire database
+    if self.db then
+        self.db:ResetDB(true)
+    end
+    
+    self:Print("|cff00ff00All data wiped! Reloading UI...|r")
+    
+    -- Reload UI after a short delay
+    C_Timer.After(1, function()
+        if C_UI and C_UI.Reload then
+            C_UI.Reload()
+        else
+            ReloadUI()
+        end
+    end)
+end
+
 function WarbandNexus:InitializeConfig()
     -- Implemented in Config.lua
 end
