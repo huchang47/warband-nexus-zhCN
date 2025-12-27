@@ -15,8 +15,10 @@ local tinsert = table.insert
 
 -- Minimal logging for operations
 local function LogOperation(operationName, status, trigger)
-    local timestamp = date("%H:%M")
-    print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "Manual"))
+    if WarbandNexus.db.profile.debugMode then
+        local timestamp = date("%H:%M")
+        print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "Manual"))
+    end
 end
 
 --[[

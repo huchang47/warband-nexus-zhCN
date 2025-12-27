@@ -336,28 +336,38 @@ local options = {
             end,
             set = function(_, r, g, b)
                 -- This is called when user clicks OK in the color picker
-                print(string.format("COLOR SET CALLBACK: R=%.2f, G=%.2f, B=%.2f", r, g, b))
-                print(string.format("Before setting confirmed: %s", tostring(colorPickerConfirmed)))
+                if WarbandNexus.db.profile.debugMode then
+                    print(string.format("COLOR SET CALLBACK: R=%.2f, G=%.2f, B=%.2f", r, g, b))
+                    print(string.format("Before setting confirmed: %s", tostring(colorPickerConfirmed)))
+                end
                 
                 -- Mark as confirmed so OnHide doesn't restore
                 colorPickerConfirmed = true
                 
-                print(string.format("After setting confirmed: %s", tostring(colorPickerConfirmed)))
+                if WarbandNexus.db.profile.debugMode then
+                    print(string.format("After setting confirmed: %s", tostring(colorPickerConfirmed)))
+                end
                 
                 -- Clear backup immediately - user confirmed
                 colorPickerOriginalColors = nil
-                print("Backup cleared in set callback")
+                if WarbandNexus.db.profile.debugMode then
+                    print("Backup cleared in set callback")
+                end
                 
                 -- Save the final color to database
                 local finalColors = ns.UI_CalculateThemeColors(r, g, b)
                 WarbandNexus.db.profile.themeColors = finalColors
                 
-                print("COLOR SAVED TO DB")
+                if WarbandNexus.db.profile.debugMode then
+                    print("COLOR SAVED TO DB")
+                end
                 
                 -- Refresh UI with final colors
                 if ns.UI_RefreshColors then
                     ns.UI_RefreshColors()
-                    print("COLOR REFRESH CALLED")
+                    if WarbandNexus.db.profile.debugMode then
+                        print("COLOR REFRESH CALLED")
+                    end
                 end
             end,
         },
@@ -735,7 +745,9 @@ local function InstallColorPickerPreviewHook()
     
     -- Monitor when ColorPickerFrame is shown
     ColorPickerFrame:HookScript("OnShow", function()
-        print("COLOR PICKER OPENED")
+        if WarbandNexus.db.profile.debugMode then
+            print("COLOR PICKER OPENED")
+        end
         
         -- Reset confirmation flag
         colorPickerConfirmed = false
@@ -755,7 +767,9 @@ local function InstallColorPickerPreviewHook()
             tabHover = {current.tabHover[1], current.tabHover[2], current.tabHover[3]},
         }
         
-        print(string.format("BACKED UP COLORS: R=%.2f, G=%.2f, B=%.2f", current.accent[1], current.accent[2], current.accent[3]))
+        if WarbandNexus.db.profile.debugMode then
+            print(string.format("BACKED UP COLORS: R=%.2f, G=%.2f, B=%.2f", current.accent[1], current.accent[2], current.accent[3]))
+        end
         
         -- Initialize last known RGB values
         lastR, lastG, lastB = ColorPickerFrame:GetColorRGB()
@@ -781,7 +795,9 @@ local function InstallColorPickerPreviewHook()
                 
                 lastR, lastG, lastB = r, g, b
                 
-                print(string.format("COLOR PREVIEW: R=%.2f, G=%.2f, B=%.2f", r, g, b))
+                if WarbandNexus.db.profile.debugMode then
+                    print(string.format("COLOR PREVIEW: R=%.2f, G=%.2f, B=%.2f", r, g, b))
+                end
                 
                 -- Update preview (temporary, not saved to DB yet)
                 local previewColors = ns.UI_CalculateThemeColors(r, g, b)
@@ -803,23 +819,31 @@ local function InstallColorPickerPreviewHook()
     
     if okayButton then
         okayButton:HookScript("OnClick", function()
-            print("OKAY BUTTON CLICKED - CONFIRMING COLOR")
+            if WarbandNexus.db.profile.debugMode then
+                print("OKAY BUTTON CLICKED - CONFIRMING COLOR")
+            end
             colorPickerConfirmed = true
         end)
     else
-        print("WARNING: Could not find ColorPicker Okay button")
+        if WarbandNexus.db.profile.debugMode then
+            print("WARNING: Could not find ColorPicker Okay button")
+        end
     end
     
     if cancelButton then
         cancelButton:HookScript("OnClick", function()
-            print("CANCEL BUTTON CLICKED - REVERTING COLOR")
+            if WarbandNexus.db.profile.debugMode then
+                print("CANCEL BUTTON CLICKED - REVERTING COLOR")
+            end
             colorPickerConfirmed = false
         end)
     end
     
     -- Monitor when ColorPickerFrame is hidden
     ColorPickerFrame:HookScript("OnHide", function()
-        print("COLOR PICKER CLOSED")
+        if WarbandNexus.db.profile.debugMode then
+            print("COLOR PICKER CLOSED")
+        end
         
         -- Stop polling ticker
         if colorPickerTicker then
@@ -829,18 +853,24 @@ local function InstallColorPickerPreviewHook()
         
         -- Delay to allow set callback to fire first
         C_Timer.After(0.05, function()
-            print(string.format("ONHIDE CLEANUP: confirmed=%s, hasBackup=%s", tostring(colorPickerConfirmed), tostring(colorPickerOriginalColors ~= nil)))
+            if WarbandNexus.db.profile.debugMode then
+                print(string.format("ONHIDE CLEANUP: confirmed=%s, hasBackup=%s", tostring(colorPickerConfirmed), tostring(colorPickerOriginalColors ~= nil)))
+            end
             
             -- If not confirmed and backup exists, user cancelled
             if not colorPickerConfirmed and colorPickerOriginalColors then
-                print("RESTORING ORIGINAL COLORS (USER CANCELLED)")
+                if WarbandNexus.db.profile.debugMode then
+                    print("RESTORING ORIGINAL COLORS (USER CANCELLED)")
+                end
                 WarbandNexus.db.profile.themeColors = colorPickerOriginalColors
                 
                 if ns.UI_RefreshColors then
                     ns.UI_RefreshColors()
                 end
             elseif colorPickerConfirmed then
-                print("COLOR CONFIRMED (OK BUTTON CLICKED)")
+                if WarbandNexus.db.profile.debugMode then
+                    print("COLOR CONFIRMED (OK BUTTON CLICKED)")
+                end
                 -- Ensure the final color is saved (already saved by ticker, just confirm)
                 colorPickerOriginalColors = nil
             end

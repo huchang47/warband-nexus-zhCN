@@ -85,7 +85,9 @@ local COLORS = GetColors()
 
 -- Refresh COLORS table from database
 local function RefreshColors()
-    print("=== RefreshColors CALLED ===")
+    if WarbandNexus.db.profile.debugMode then
+        print("=== RefreshColors CALLED ===")
+    end
     
     -- Immediate update
     local newColors = GetColors()
@@ -95,7 +97,9 @@ local function RefreshColors()
     -- Also update the namespace reference
     ns.UI_COLORS = COLORS
     
-    print(string.format("New accent color: R=%.2f, G=%.2f, B=%.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
+    if WarbandNexus.db.profile.debugMode then
+        print(string.format("New accent color: R=%.2f, G=%.2f, B=%.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
+    end
     
     -- Update main frame border and header if it exists
     if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
@@ -106,8 +110,10 @@ local function RefreshColors()
         -- Calculate hex color inline
         local accentHex = string.format("%02x%02x%02x", accentColor[1] * 255, accentColor[2] * 255, accentColor[3] * 255)
         
-        print(string.format("Accent hex: %s", accentHex))
-        print(string.format("mainFrame exists: %s", tostring(f ~= nil)))
+        if WarbandNexus.db.profile.debugMode then
+            print(string.format("Accent hex: %s", accentHex))
+            print(string.format("mainFrame exists: %s", tostring(f ~= nil)))
+        end
         
         -- Note: Title stays white (not theme-colored)
         
@@ -180,15 +186,21 @@ local function RefreshColors()
         
         -- Refresh content to update dynamic elements (without infinite loop)
         if f:IsShown() and WarbandNexus.RefreshUI then
-            print("Calling RefreshUI to update content")
+            if WarbandNexus.db.profile.debugMode then
+                print("Calling RefreshUI to update content")
+            end
             WarbandNexus:RefreshUI()
         end
         
-        print("=== RefreshColors COMPLETE ===")
+        if WarbandNexus.db.profile.debugMode then
+            print("=== RefreshColors COMPLETE ===")
+        end
     else
-        print("ERROR: mainFrame not found!")
-        print(string.format("WarbandNexus exists: %s", tostring(WarbandNexus ~= nil)))
-        print(string.format("WarbandNexus.UI exists: %s", tostring(WarbandNexus and WarbandNexus.UI ~= nil)))
+        if WarbandNexus.db.profile.debugMode then
+            print("ERROR: mainFrame not found!")
+            print(string.format("WarbandNexus exists: %s", tostring(WarbandNexus ~= nil)))
+            print(string.format("WarbandNexus.UI exists: %s", tostring(WarbandNexus and WarbandNexus.UI ~= nil)))
+        end
     end
 end
 

@@ -848,9 +848,11 @@ function WarbandNexus:SlashCommand(input)
         elseif subCmd == "export" then
             if self.ExportErrorLog then
                 local log = self:ExportErrorLog()
-                self:Print("Error log copied to clipboard (if supported)")
-                -- Note: Actual clipboard copy would need additional library
-                print(log)
+                self:Print("Error log exported. Check chat for full log.")
+                -- Print full log (only in debug mode for cleanliness)
+                if self.db.profile.debugMode then
+                    print(log)
+                end
             end
         elseif tonumber(subCmd) then
             if self.ShowErrorDetails then

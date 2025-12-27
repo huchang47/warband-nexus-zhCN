@@ -23,8 +23,10 @@ local ipairs = ipairs
 
 -- Minimal logging for operations
 local function LogOperation(operationName, status, trigger)
-    local timestamp = date("%H:%M")
-    print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "UI_REFRESH"))
+    if WarbandNexus.db.profile.debugMode then
+        local timestamp = date("%H:%M")
+        print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "UI_REFRESH"))
+    end
 end
 local pairs = pairs
 local next = next
