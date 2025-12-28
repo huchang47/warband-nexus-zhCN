@@ -898,11 +898,74 @@ function WarbandNexus:ScanReputations()
             local currentValue, maxValue
             local renownLevel, renownMaxLevel = nil, nil
             local isMajorFaction = false
-            
-            -- Check if this is a Renown faction AND if character has it unlocked
-            -- Use GetMajorFactionRenownInfo as validation - returns nil if not unlocked
             local isRenownFaction = false
-            if C_MajorFactions and C_MajorFactions.GetMajorFactionRenownInfo then
+            local rankName = nil  -- New field for Friendship ranks
+            
+            -- Check Friendship / Paragon-like (Brann, Pacts) - High Priority for TWW
+            if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                local friendInfo = C_GossipInfo.GetFriendshipReputation(factionData.factionID)
+                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                    isRenownFaction = true
+                    isMajorFaction = true
+                    
+                    -- Get rank information using GetFriendshipReputationRanks API
+                    local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
+                                      C_GossipInfo.GetFriendshipReputationRanks(factionData.factionID)
+                    
+                    -- Handle named ranks (e.g. "Mastermind") vs numbered ranks
+                    if type(friendInfo.reaction) == "string" then
+                        rankName = friendInfo.reaction
+                        renownLevel = 1 -- Default numeric value to prevent UI crashes
+                    else
+                        renownLevel = friendInfo.reaction or 1
+                    end
+                    
+                    -- Try to extract level from text if available (overrides default)
+                    if friendInfo.text then
+                        local levelMatch = friendInfo.text:match("Level (%d+)")
+                        if levelMatch then
+                            renownLevel = tonumber(levelMatch)
+                        end
+                        -- Try to get max level from text if available "Level 3/10"
+                        local maxLevelMatch = friendInfo.text:match("Level %d+/(%d+)")
+                        if maxLevelMatch then
+                            renownMaxLevel = tonumber(maxLevelMatch)
+                        end
+                    end
+                    
+                    -- Use GetFriendshipReputationRanks to get max level and current rank
+                    if ranksInfo then
+                        if ranksInfo.maxLevel and ranksInfo.maxLevel > 0 then
+                            renownMaxLevel = ranksInfo.maxLevel
+                        end
+                        if ranksInfo.currentLevel and ranksInfo.currentLevel > 0 then
+                            renownLevel = ranksInfo.currentLevel
+                        end
+                    end
+
+                    -- Calculate progress within current rank
+                    if friendInfo.nextThreshold then
+                        currentValue = (friendInfo.standing or 0) - (friendInfo.reactionThreshold or 0)
+                        maxValue = (friendInfo.nextThreshold or 0) - (friendInfo.reactionThreshold or 0)
+                        
+                        -- If we still don't have a max level, default to 0 (unknown)
+                        if not renownMaxLevel then
+                             renownMaxLevel = 0 
+                        end
+                    else
+                        -- Maxed out
+                        currentValue = 1
+                        maxValue = 1
+                        -- If maxed, set max level to current level so UI knows it's complete
+                        if not renownMaxLevel or renownMaxLevel == 0 then
+                            renownMaxLevel = renownLevel
+                        end
+                    end 
+                end
+            end
+
+            -- Check if this is a Renown faction (if not already handled as Friendship)
+            if not isRenownFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionRenownInfo then
                 local renownInfo = C_MajorFactions.GetMajorFactionRenownInfo(factionData.factionID)
                 if renownInfo then  -- nil = not unlocked for this character
                     isRenownFaction = true
@@ -910,27 +973,40 @@ function WarbandNexus:ScanReputations()
                     -- Try both possible field names (API inconsistency)
                     renownLevel = renownInfo.renownLevel or renownInfo.currentRenownLevel or 0
                     
-                    -- Get correct max renown level (faction-specific)
-                    if C_MajorFactions.GetMaximumRenownLevel then
-                        renownMaxLevel = C_MajorFactions.GetMaximumRenownLevel(factionData.factionID) or 25
-                    else
-                        renownMaxLevel = 25  -- Fallback
-                    end
+                    -- TWW 11.2.7: Max level is NOT in renownInfo/majorData
+                    -- We need to find max level by checking rewards at each level
+                    renownMaxLevel = 0
                     
-                    -- Get accurate renown progress within current level
+                    -- Method 1: Check if at maximum
                     if C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(factionData.factionID) then
+                        -- If at maximum, current level IS the max level
+                        renownMaxLevel = renownLevel
                         currentValue = 0
                         maxValue = 1
                     else
-                        -- Use renownInfo for accurate progress
+                        -- Method 2: Find max level by checking rewards (iterate up to find the highest valid level)
+                        if C_MajorFactions.GetRenownRewardsForLevel then
+                            -- Check up to level 50 (reasonable max for any renown faction)
+                            for testLevel = renownLevel, 50 do
+                                local rewards = C_MajorFactions.GetRenownRewardsForLevel(factionData.factionID, testLevel)
+                                if rewards and #rewards > 0 then
+                                    -- This level exists, update max
+                                    renownMaxLevel = testLevel
+                                else
+                                    -- No rewards = this level doesn't exist, previous was max
+                                    break
+                                end
+                            end
+                        end
+                        
+                        -- Not at max - use renownInfo for accurate progress
                         currentValue = renownInfo.renownReputationEarned or 0
                         maxValue = renownInfo.renownLevelThreshold or 1
                     end
                 end
-                -- If renownInfo is nil, faction is not unlocked - SKIP (do not store)
             end
             
-            -- If not a Renown faction, check if it's inactive (classic reputation)
+            -- If not a Renown/Friendship faction, check if it's inactive (classic reputation)
             if not isRenownFaction then
                 local isInactive = false
                 if factionData.isInactive ~= nil then
@@ -971,6 +1047,7 @@ function WarbandNexus:ScanReputations()
                     maxValue = maxValue,
                     renownLevel = renownLevel,
                     renownMaxLevel = renownMaxLevel,
+                    rankName = rankName,  -- NEW: Store named rank if available
                     paragonValue = paragonValue,
                     paragonThreshold = paragonThreshold,
                     paragonRewardPending = paragonRewardPending,

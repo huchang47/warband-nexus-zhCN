@@ -340,6 +340,9 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
     self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged") -- Reputation changes
+    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged") -- Renown level changes
+    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged") -- Renown unlock
+    self:RegisterEvent("QUEST_LOG_UPDATE", "OnReputationChanged") -- Quest completion (unlocks)
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     

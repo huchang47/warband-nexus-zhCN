@@ -154,8 +154,8 @@ local function IsReputationHigher(rep1, rep2)
     end
     
     -- Check Renown level
-    local renown1 = rep1.renownLevel or 0
-    local renown2 = rep2.renownLevel or 0
+    local renown1 = (type(rep1.renownLevel) == "number") and rep1.renownLevel or 0
+    local renown2 = (type(rep2.renownLevel) == "number") and rep2.renownLevel or 0
     
     if renown1 ~= renown2 then
         return renown1 > renown2
@@ -210,6 +210,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                         maxValue = progress.maxValue,
                         renownLevel = progress.renownLevel,
                         renownMaxLevel = progress.renownMaxLevel,
+                        rankName = progress.rankName,
                         paragonValue = progress.paragonValue,
                         paragonThreshold = progress.paragonThreshold,
                         paragonRewardPending = progress.paragonRewardPending,
@@ -457,11 +458,18 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     local standingNumber = ""  -- The number part (25, 8, etc)
     local standingColorCode = ""
     
-    -- Priority: Check if Major Faction first, then Renown level, then standing
-    if reputation.isMajorFaction or (reputation.renownLevel and reputation.renownLevel > 0) then
+    -- Priority: Check if named rank (Friendship), then Renown level, then standing
+    if reputation.rankName then
+        -- Named rank (Friendship system)
+        -- Show only rank name in main display (scores shown in tooltip only)
+        standingWord = reputation.rankName
+        standingNumber = "" -- No separate number column for Friendship
+        standingColorCode = "|cffffcc00" -- Gold for Special Ranks
+    elseif reputation.isMajorFaction or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
         -- Renown system: word + number
         standingWord = "Renown"
         standingNumber = tostring(reputation.renownLevel or 0)
+        -- Don't append " / ?" - just show current level
         standingColorCode = "|cffffcc00" -- Gold for Renown
     elseif reputation.standingID then
         -- Classic reputation: just the standing name, no number
@@ -491,7 +499,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Show number for Renown
             numberText:SetText(standingColorCode .. standingNumber .. "|r")
         else
-            -- Leave empty for classic reputation, but still reserve the space
+            -- Leave empty for classic reputation or named ranks, but still reserve the space
             numberText:SetText("")
         end
         
@@ -577,8 +585,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     if isParagon then
         -- If Paragon exists, base reputation is ALWAYS maxed (you can't have Paragon without maxing base)
         baseReputationMaxed = true
-    elseif reputation.renownLevel and reputation.renownMaxLevel then
-        -- Renown system: check if at max level
+    elseif reputation.renownLevel and reputation.renownMaxLevel and reputation.renownMaxLevel > 0 and type(reputation.renownLevel) == "number" then
+        -- Renown system: check if at max level (numeric comparison only)
         baseReputationMaxed = (reputation.renownLevel >= reputation.renownMaxLevel)
     else
         -- Classic reputation: check if at max
@@ -642,8 +650,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if isParagon then
             -- Paragon: Pink
             progressBar:SetColorTexture(1, 0.4, 1, 1)
-        elseif reputation.renownLevel and reputation.renownLevel > 0 then
-            -- Renown: Gold
+        elseif reputation.rankName or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
+            -- Renown / Special Rank: Gold
             progressBar:SetColorTexture(1, 0.82, 0, 1)
         else
             -- Standing color
@@ -693,8 +701,40 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         GameTooltip:AddLine(" ")
         
         -- Standing info (updated for new structure)
-        if reputation.renownLevel and reputation.renownLevel > 0 then
-            GameTooltip:AddDoubleLine("Renown Level:", format("%d / %d", reputation.renownLevel, reputation.renownMaxLevel or 25), 0.7, 0.7, 0.7, 1, 0.82, 0)
+        if reputation.rankName then
+            -- Friendship rank with named title (e.g., Mastermind)
+            GameTooltip:AddDoubleLine("Current Rank:", reputation.rankName, 0.7, 0.7, 0.7, 1, 0.82, 0)
+            
+            -- Show rank number if available: "Rank 5 / 8"
+            if reputation.renownLevel and type(reputation.renownLevel) == "number" and 
+               reputation.renownMaxLevel and reputation.renownMaxLevel > 0 then
+                GameTooltip:AddDoubleLine("Rank:", 
+                    format("%d / %d", reputation.renownLevel, reputation.renownMaxLevel), 
+                    0.7, 0.7, 0.7, 1, 0.82, 0)
+            end
+            
+            -- Show reputation progress within current rank
+            GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
+        elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
+            -- Standard Renown system - only show " / max" if max is known
+            local maxLevel = reputation.renownMaxLevel
+            
+            -- If maxLevel is 0 or nil, try to get it from API in real-time
+            if (not maxLevel or maxLevel == 0) and factionID and C_MajorFactions and C_MajorFactions.GetMaximumRenownLevel then
+                maxLevel = C_MajorFactions.GetMaximumRenownLevel(factionID)
+            end
+            
+            -- Only show " / max" format if max is known and greater than 0
+            if maxLevel and maxLevel > 0 then
+                GameTooltip:AddDoubleLine("Renown Level:", 
+                    format("%d / %d", reputation.renownLevel, maxLevel), 
+                    0.7, 0.7, 0.7, 1, 0.82, 0)
+            else
+                -- Don't show max if unknown (no " / ?")
+                GameTooltip:AddDoubleLine("Renown Level:", 
+                    tostring(reputation.renownLevel), 
+                    0.7, 0.7, 0.7, 1, 0.82, 0)
+            end
             GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
         else
             local standingName = GetStandingName(reputation.standingID or 4)
@@ -973,6 +1013,7 @@ function WarbandNexus:DrawReputationTab(parent)
                         maxValue = progress.maxValue,
                         renownLevel = progress.renownLevel,
                         renownMaxLevel = progress.renownMaxLevel,
+                        rankName = progress.rankName,
                         paragonValue = progress.paragonValue,
                         paragonThreshold = progress.paragonThreshold,
                         paragonRewardPending = progress.paragonRewardPending,
