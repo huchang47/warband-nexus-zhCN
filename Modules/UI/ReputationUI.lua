@@ -724,10 +724,15 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     0.7, 0.7, 0.7, 1, 0.82, 0)
             end
             
-            -- Show reputation progress within current rank (only if not maxed)
-            local isFriendshipMaxed = baseReputationMaxed and not isParagon
-            if not isFriendshipMaxed then
-                GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
+            -- Show Paragon Progress for Friendship reputations (entire line pink)
+            if reputation.paragonValue and reputation.paragonThreshold then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddDoubleLine("Paragon Progress:", 
+                    FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold), 
+                    1, 0.4, 1, 1, 0.4, 1)  -- Both label and value in pink
+                if reputation.paragonRewardPending then
+                    GameTooltip:AddLine("|cff00ff00Reward Available!|r", 1, 1, 1)
+                end
             end
         elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
             -- Standard Renown system - only show " / max" if max is known
@@ -749,16 +754,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     tostring(reputation.renownLevel), 
                     0.7, 0.7, 0.7, 1, 0.82, 0)
             end
-            GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
         else
             local standingName = GetStandingName(reputation.standingID or 4)
             local r, g, b = GetStandingColor(reputation.standingID or 4)
             GameTooltip:AddDoubleLine("Standing:", standingName, 0.7, 0.7, 0.7, r, g, b)
-            GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 1, 1)
         end
         
-        -- Paragon info (updated for new structure)
-        if reputation.paragonValue and reputation.paragonThreshold then
+        -- Paragon info for NON-friendship reputations (Friendship already shows paragon above)
+        if not reputation.rankName and reputation.paragonValue and reputation.paragonThreshold then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Paragon Progress:", 1, 0.4, 1)
             GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold), 0.7, 0.7, 0.7, 1, 0.4, 1)
