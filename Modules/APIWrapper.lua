@@ -643,6 +643,61 @@ function WarbandNexus:InitializeAPIWrapper()
 end
 
 -- ============================================================================
+-- SCREEN & UI SCALE API WRAPPERS
+-- ============================================================================
+
+--[[
+    Get screen dimensions and UI scale
+    @return table {width, height, scale, category}
+]]
+function WarbandNexus:API_GetScreenInfo()
+    local width = UIParent:GetWidth() or 1920
+    local height = UIParent:GetHeight() or 1080
+    local scale = UIParent:GetEffectiveScale() or 1.0
+    
+    -- Categorize screen size
+    local category = "normal"
+    if width < 1600 then
+        category = "small"
+    elseif width >= 3840 then
+        category = "xlarge"
+    elseif width >= 2560 then
+        category = "large"
+    end
+    
+    return {
+        width = width,
+        height = height,
+        scale = scale,
+        category = category,
+    }
+end
+
+--[[
+    Calculate optimal window dimensions based on screen size
+    @param contentMinWidth number - Minimum width required for content
+    @param contentMinHeight number - Minimum height required for content
+    @return number, number, number, number - Optimal width, height, max width, max height
+]]
+function WarbandNexus:API_CalculateOptimalWindowSize(contentMinWidth, contentMinHeight)
+    local screen = self:API_GetScreenInfo()
+    
+    -- Default size: 50% width, 60% height (comfortable for most content)
+    local defaultWidth = math.floor(screen.width * 0.50)
+    local defaultHeight = math.floor(screen.height * 0.60)
+    
+    -- Maximum size: 75% width, 80% height (leave space around window)
+    local maxWidth = math.floor(screen.width * 0.75)
+    local maxHeight = math.floor(screen.height * 0.80)
+    
+    -- Apply constraints
+    local optimalWidth = math.max(contentMinWidth, math.min(defaultWidth, maxWidth))
+    local optimalHeight = math.max(contentMinHeight, math.min(defaultHeight, maxHeight))
+    
+    return optimalWidth, optimalHeight, maxWidth, maxHeight
+end
+
+-- ============================================================================
 -- API COMPATIBILITY REPORT
 -- ============================================================================
 

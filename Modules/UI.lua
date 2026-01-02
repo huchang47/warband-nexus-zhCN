@@ -28,12 +28,35 @@ local format = string.format
 local floor = math.floor
 local date = date
 
--- Constants
-local DEFAULT_WIDTH = 680
-local DEFAULT_HEIGHT = 500
-local MIN_WIDTH = 800  -- Increased to prevent UI element overlap
-local MIN_HEIGHT = 600  -- Increased to accommodate reputation rows
+-- Layout Constants (computed dynamically)
+local CONTENT_MIN_WIDTH = 920   -- Characters tab absolute minimum
+local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
 local ROW_HEIGHT = 26
+
+-- Window size (computed on-demand)
+local function GetWindowDimensions()
+    -- Get cached values from savedvariables or calculate fresh
+    if WarbandNexus.db and WarbandNexus.db.profile.windowWidth then
+        local savedWidth = WarbandNexus.db.profile.windowWidth
+        local savedHeight = WarbandNexus.db.profile.windowHeight
+        
+        -- Validate saved values are within bounds
+        local screen = WarbandNexus:API_GetScreenInfo()
+        local maxWidth = math.floor(screen.width * 0.90)
+        local maxHeight = math.floor(screen.height * 0.90)
+        
+        savedWidth = math.max(CONTENT_MIN_WIDTH, math.min(savedWidth, maxWidth))
+        savedHeight = math.max(CONTENT_MIN_HEIGHT, math.min(savedHeight, maxHeight))
+        
+        return savedWidth, savedHeight
+    end
+    
+    -- First time: calculate optimal size
+    local defaultWidth, defaultHeight, maxWidth, maxHeight = 
+        WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
+    
+    return defaultWidth, defaultHeight
+end
 
 local mainFrame = nil
 local goldTransferFrame = nil
@@ -434,16 +457,22 @@ end
 -- CREATE MAIN WINDOW
 --============================================================================
 function WarbandNexus:CreateMainWindow()
-    local savedWidth = self.db and self.db.profile.windowWidth or DEFAULT_WIDTH
-    local savedHeight = self.db and self.db.profile.windowHeight or DEFAULT_HEIGHT
+    -- Calculate window dimensions dynamically
+    local windowWidth, windowHeight = GetWindowDimensions()
+    
+    -- Calculate bounds
+    local screen = self:API_GetScreenInfo()
+    local maxWidth = math.floor(screen.width * 0.90)
+    local maxHeight = math.floor(screen.height * 0.90)
     
     -- Main frame
     local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent, "BackdropTemplate")
-    f:SetSize(savedWidth, savedHeight)
+    f:SetSize(windowWidth, windowHeight)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:SetResizable(true)
-    f:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, 1200, 900)
+    -- Dynamic bounds based on screen
+    f:SetResizeBounds(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT, maxWidth, maxHeight)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
