@@ -419,16 +419,113 @@ function WarbandNexus:CollectPvEData()
                 end
                 
                 -- Method 2: Use GetExampleRewardItemHyperlinks(id) - id is activity.id
-                if not activityData.rewardItemLevel and activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
+                if activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
                     local hyperlink, upgradeHyperlink = C_WeeklyRewards.GetExampleRewardItemHyperlinks(activity.id)
-                    if hyperlink then
-                        -- Parse item level from hyperlink
+                    
+                    -- Get current reward item level from hyperlink
+                    if hyperlink and not activityData.rewardItemLevel then
                         if GetDetailedItemLevelInfo then
                             local ilvl = GetDetailedItemLevelInfo(hyperlink)
                             if ilvl and ilvl > 0 then
                                 activityData.rewardItemLevel = ilvl
                             end
                         end
+                    end
+                    
+                    -- Get UPGRADE reward item level from upgradeHyperlink
+                    if upgradeHyperlink then
+                        if GetDetailedItemLevelInfo then
+                            local upgradeIlvl = GetDetailedItemLevelInfo(upgradeHyperlink)
+                            if upgradeIlvl and upgradeIlvl > 0 then
+                                activityData.upgradeItemLevel = upgradeIlvl
+                            end
+                        end
+                    end
+                end
+                
+                -- Determine activity type name
+                local activityTypeName = nil
+                if Enum and Enum.WeeklyRewardChestThresholdType then
+                    if activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
+                        activityTypeName = "M+"
+                    elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
+                        activityTypeName = "World"
+                    elseif activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
+                        activityTypeName = "Raid"
+                    end
+                else
+                    if activity.type == 1 then activityTypeName = "M+"
+                    elseif activity.type == 6 then activityTypeName = "World"
+                    elseif activity.type == 3 then activityTypeName = "Raid"
+                    end
+                end
+                
+                local currentLevel = activity.level or 0
+                
+                -- M+: Use GetNextMythicPlusIncrease
+                if activityTypeName == "M+" and C_WeeklyRewards.GetNextMythicPlusIncrease then
+                    local hasData, nextLevel, nextIlvl = C_WeeklyRewards.GetNextMythicPlusIncrease(currentLevel)
+                    if hasData and nextLevel then
+                        activityData.nextLevel = nextLevel
+                        activityData.nextLevelIlvl = nextIlvl
+                    end
+                    -- Get max M+ info (level 10)
+                    local hasMax, maxLevel, maxIlvl = C_WeeklyRewards.GetNextMythicPlusIncrease(9)
+                    if hasMax then
+                        activityData.maxLevel = 10
+                        activityData.maxIlvl = maxIlvl
+                    end
+                end
+                
+                -- World/Delves: Use GetNextActivitiesIncrease with activity.id as activityTierID
+                if activityTypeName == "World" then
+                    -- Set next level (current + 1)
+                    activityData.nextLevel = currentLevel + 1
+                    activityData.maxLevel = 8 -- Tier 8 is max
+                    
+                    -- Try API first
+                    if C_WeeklyRewards.GetNextActivitiesIncrease and activity.id then
+                        local hasData, nextTierID, nextLevel, nextIlvl = C_WeeklyRewards.GetNextActivitiesIncrease(activity.id, currentLevel)
+                        if hasData and nextIlvl then
+                            activityData.nextLevelIlvl = nextIlvl
+                        end
+                        -- Get max World info (Tier 8)
+                        local hasMax, maxTierID, maxLevel, maxIlvl = C_WeeklyRewards.GetNextActivitiesIncrease(activity.id, 7)
+                        if hasMax and maxIlvl then
+                            activityData.maxIlvl = maxIlvl
+                        end
+                    end
+                    
+                    -- Fallback for next tier: Use upgradeItemLevel from hyperlink
+                    if not activityData.nextLevelIlvl and activityData.upgradeItemLevel then
+                        activityData.nextLevelIlvl = activityData.upgradeItemLevel
+                    end
+                    
+                    -- Fallback for max tier: Calculate from current + tier difference
+                    -- Each Delve tier adds approximately 3 item levels
+                    if not activityData.maxIlvl and activityData.rewardItemLevel then
+                        local tierDiff = 8 - currentLevel
+                        activityData.maxIlvl = activityData.rewardItemLevel + (tierDiff * 3)
+                    end
+                end
+                
+                -- Raid: Difficulty progression
+                if activityTypeName == "Raid" then
+                    local difficultyOrder = { 17, 14, 15, 16 } -- LFR → Normal → Heroic → Mythic
+                    for i, diff in ipairs(difficultyOrder) do
+                        if diff == currentLevel and i < #difficultyOrder then
+                            activityData.nextLevel = difficultyOrder[i + 1]
+                            break
+                        end
+                    end
+                    activityData.maxLevel = 16 -- Mythic
+                    
+                    -- Get item levels from hyperlinks or use available data
+                    if not activityData.nextLevelIlvl and activityData.upgradeItemLevel then
+                        activityData.nextLevelIlvl = activityData.upgradeItemLevel
+                    end
+                    if not activityData.maxIlvl then
+                        activityData.maxIlvl = activityData.upgradeItemLevel or activityData.rewardItemLevel
                     end
                 end
                 

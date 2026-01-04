@@ -51,17 +51,17 @@ local function IsVaultSlotAtMax(activity, typeName)
     
     -- Define max thresholds per activity type
     if typeName == "Raid" then
-        -- For raids, level typically represents difficulty tier
-        -- Max is usually Mythic (highest difficulty) with 8/8 bosses
-        -- In current implementation, checking if completed at highest available tier
-        return level >= 8 -- Mythic raid completion
+        -- For raids, level is difficulty ID (14=Normal, 15=Heroic, 16=Mythic)
+        return level >= 16 -- Mythic is max
     elseif typeName == "M+" then
-        -- For M+, level is the keystone level
-        -- Consider 10+ as "max" for meaningful vault upgrades
+        -- For M+: 0=Heroic, 1=Mythic, 2+=Keystone level
+        -- Max is keystone level 10 or higher
         return level >= 10
-    elseif typeName == "World" or typeName == "PvP" then
-        -- For World/PvP, we consider completed slots at reasonable thresholds
-        -- These typically have lower variance, so completed = max
+    elseif typeName == "World" then
+        -- For World/Delves, Tier 8 is max
+        return level >= 8
+    elseif typeName == "PvP" then
+        -- PvP has no tier progression
         return true
     end
     
@@ -114,10 +114,17 @@ local function GetVaultActivityDisplayText(activity, typeName)
         return difficulty
     elseif typeName == "M+" then
         local level = activity.level or 0
-        return format("+%d", level)
+        -- Level 0 = Heroic dungeon, Level 1 = Mythic dungeon, Level 2+ = Keystone
+        if level == 0 then
+            return "Heroic"
+        elseif level == 1 then
+            return "Mythic"
+        else
+            return string.format("+%d", level)
+        end
     elseif typeName == "World" then
         local tier = activity.level or 1
-        return format("Tier %d", tier)
+        return string.format("Tier %d", tier)
     elseif typeName == "PvP" then
         return "PvP"
     end
@@ -532,16 +539,21 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- Default thresholds for each activity type (when no data exists)
             local defaultThresholds = {
                 ["Raid"] = {2, 4, 6},
-                ["M+"] = {1, 4, 8},
+                ["Dungeon"] = {1, 4, 8},
                 ["World"] = {3, 3, 3},
                 ["PvP"] = {3, 3, 3}
             }
             
             -- Table Rows (3 TYPES - evenly distributed)
-            local sortedTypes = {"Raid", "M+", "World"}
+            local sortedTypes = {"Raid", "Dungeon", "World"}
             local rowIndex = 0
             for _, typeName in ipairs(sortedTypes) do
-                local activities = vaultByType[typeName]
+                -- Map display name to actual data key
+                local dataKey = typeName
+                if typeName == "Dungeon" then
+                    dataKey = "M+"
+                end
+                local activities = vaultByType[dataKey]
                 
                 -- Create row frame container for better positioning
                 local rowFrame = CreateFrame("Frame", nil, vaultCard)
@@ -558,22 +570,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                     rowBg:SetColorTexture(0.08, 0.08, 0.1, 0.5)
                 end
                 
-                -- Icon texture (left side)
-                local iconTexture = rowFrame:CreateTexture(nil, "ARTWORK")
-                iconTexture:SetSize(16, 16)
-                iconTexture:SetPoint("LEFT", 5, 0)
-                iconTexture:SetTexture(GetVaultTypeIcon(typeName))
-                
-                -- Type label (next to icon)
+                -- Type label (no icon)
                 local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                label:SetPoint("LEFT", 25, 0)  -- 5px offset + 16px icon + 4px padding
+                label:SetPoint("LEFT", 10, 0)
                 label:SetText(string.format("|cffffffff%s|r", typeName))
                 
                 -- Create individual slot frames for proper alignment
                 local thresholds = defaultThresholds[typeName] or {3, 3, 3}
                 
                 for slotIndex = 1, 3 do
-                    -- Create slot container frame
+                    -- Create slot container frame with mouse support
                     local slotFrame = CreateFrame("Frame", nil, rowFrame)
                     local xOffset = typeColumnWidth + ((slotIndex - 1) * slotWidth)
                     slotFrame:SetSize(slotWidth, rowHeight - 2)
@@ -586,51 +592,138 @@ function WarbandNexus:DrawPvEProgress(parent)
                     local isComplete = (threshold > 0 and progress >= threshold)
                     
                     if activity and isComplete then
-                        -- COMPLETED SLOT: Show 3 lines (all centered)
-                        -- Line 1: Green Tick (centered at top)
-                        local checkIcon = slotFrame:CreateTexture(nil, "OVERLAY")
-                        checkIcon:SetSize(16, 16)
-                        checkIcon:SetPoint("TOP", slotFrame, "TOP", 0, -8)
-                        checkIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                        
-                        -- Line 2: Tier/Difficulty/Keystone Level (centered)
-                        local displayText = GetVaultActivityDisplayText(activity, typeName)
+                        -- COMPLETED SLOT: Show 2 centered lines (no green tick)
+                        -- Line 1: Tier/Difficulty/Keystone Level
+                        local displayText = GetVaultActivityDisplayText(activity, dataKey)
                         local tierText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                        tierText:SetPoint("TOP", checkIcon, "BOTTOM", 0, -4)
+                        tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 8)
                         tierText:SetText(string.format("|cff00ff00%s|r", displayText))
                         
-                        -- Line 3: Reward iLvL (centered)
+                        -- Line 2: Reward iLvL
                         local rewardIlvl = GetRewardItemLevel(activity)
                         if rewardIlvl and rewardIlvl > 0 then
-                            local ilvlText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            local ilvlText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                             ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
                             ilvlText:SetText(string.format("|cffffd700iLvL %d|r", rewardIlvl))
                             
-                            -- Add upgrade arrow next to iLvL if not at max
-                            local isAtMax = IsVaultSlotAtMax(activity, typeName)
+                            -- Check if not at max level
+                            local isAtMax = IsVaultSlotAtMax(activity, dataKey)
+                            
+                            -- Show upgrade arrow for ALL non-max completed slots
                             if not isAtMax then
                                 local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY")
                                 arrowTexture:SetSize(12, 12)
                                 arrowTexture:SetPoint("LEFT", ilvlText, "RIGHT", 2, 0)
+                                arrowTexture:SetAtlas("loottoast-arrow-green")
                                 
-                                -- Use SetAtlas for the loottoast-arrow-green atlas
-                                if arrowTexture.SetAtlas then
-                                    arrowTexture:SetAtlas("loottoast-arrow-green")
-                                else
-                                    arrowTexture:SetTexture("Interface\\BUTTONS\\UI-MicroStream-Green")
-                                end
+                                -- Setup tooltip for non-max completed slots
+                                slotFrame:EnableMouse(true)
+                                slotFrame:SetScript("OnEnter", function(self)
+                                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                                    GameTooltip:ClearLines()
+                                    
+                                    -- Set fully opaque background (multiple methods for compatibility)
+                                    if GameTooltip.SetBackdropColor then
+                                        GameTooltip:SetBackdropColor(0, 0, 0, 1)
+                                    end
+                                    if GameTooltip.SetBackdropBorderColor then
+                                        GameTooltip:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+                                    end
+                                    -- NineSlice backdrop (TWW/modern UI)
+                                    if GameTooltip.NineSlice then
+                                        GameTooltip.NineSlice:SetCenterColor(0, 0, 0, 1)
+                                        GameTooltip.NineSlice:SetBorderColor(0.3, 0.3, 0.3, 1)
+                                    end
+                                    
+                                    local currentLevel = activity.level or 0
+                                    
+                                    -- Header: Upgrade Available
+                                    GameTooltip:AddLine("Upgrade Available", 0.2, 1, 0.2)
+                                    GameTooltip:AddLine(" ")
+                                    
+                                    -- Next tier requirement text
+                                    local nextReq = ""
+                                    if dataKey == "M+" then
+                                        if currentLevel == 0 then
+                                            nextReq = "Mythic dungeon"
+                                        elseif currentLevel == 1 then
+                                            nextReq = "+2 Keystone"
+                                        else
+                                            local nextLevel = activity.nextLevel or (currentLevel + 1)
+                                            nextReq = string.format("+%d Keystone", nextLevel)
+                                        end
+                                    elseif dataKey == "World" then
+                                        local nextLevel = activity.nextLevel or (currentLevel + 1)
+                                        nextReq = string.format("Tier %d Delve", nextLevel)
+                                    elseif dataKey == "Raid" then
+                                        local names = {[17]="LFR", [14]="Normal", [15]="Heroic", [16]="Mythic"}
+                                        nextReq = names[activity.nextLevel] or "Higher difficulty"
+                                    end
+                                    
+                                    -- Line 1: Next tier upgrade with colored item level
+                                    local nextIlvl = activity.nextLevelIlvl
+                                    if nextIlvl and nextIlvl > 0 then
+                                        GameTooltip:AddDoubleLine(
+                                            "Next:",
+                                            string.format("%s |cff00ff00(%d iLvL)|r", nextReq, nextIlvl),
+                                            1, 1, 1,
+                                            1, 1, 1
+                                        )
+                                    else
+                                        GameTooltip:AddDoubleLine(
+                                            "Next:",
+                                            nextReq,
+                                            1, 1, 1,
+                                            1, 1, 1
+                                        )
+                                    end
+                                    
+                                    -- Max tier requirement text
+                                    local maxReq = ""
+                                    if dataKey == "M+" then
+                                        maxReq = "+10 Keystone"
+                                    elseif dataKey == "World" then
+                                        maxReq = "Tier 8 Delve"
+                                    elseif dataKey == "Raid" then
+                                        maxReq = "Mythic"
+                                    end
+                                    
+                                    -- Line 2: Max tier reward with colored item level
+                                    local maxIlvl = activity.maxIlvl
+                                    if maxIlvl and maxIlvl > 0 then
+                                        GameTooltip:AddDoubleLine(
+                                            "Max:",
+                                            string.format("%s |cffa335ee(%d iLvL)|r", maxReq, maxIlvl),
+                                            1, 1, 1,
+                                            1, 1, 1
+                                        )
+                                    else
+                                        GameTooltip:AddDoubleLine(
+                                            "Max:",
+                                            maxReq,
+                                            1, 1, 1,
+                                            1, 1, 1
+                                        )
+                                    end
+                                    
+                                    GameTooltip:Show()
+                                end)
+                                
+                                slotFrame:SetScript("OnLeave", function(self)
+                                    GameTooltip:Hide()
+                                end)
                             end
                         end
                         
                     elseif activity and not isComplete then
-                        -- Incomplete: Show progress numbers (centered)
-                        local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        -- Incomplete: Show progress numbers (centered, larger font)
+                        local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         progressText:SetPoint("CENTER", 0, 0)
                         progressText:SetText(string.format("|cffffcc00%d|r|cffffffff/|r|cffffcc00%d|r", 
                             progress, threshold))
                     else
-                        -- No data: Show empty with threshold (centered)
-                        local emptyText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        -- No data: Show empty with threshold (centered, larger font)
+                        local emptyText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         emptyText:SetPoint("CENTER", 0, 0)
                         if threshold > 0 then
                             emptyText:SetText(string.format("|cff888888%d|r|cff666666/|r|cff888888%d|r", 0, threshold))
