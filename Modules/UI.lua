@@ -731,9 +731,9 @@ function WarbandNexus:CreateMainWindow()
     -- ===== PERSISTENT SEARCH AREA (for Items & Storage tabs) =====
     -- This area is NEVER cleared/refreshed, only shown/hidden
     local searchArea = CreateFrame("Frame", nil, content)
-    searchArea:SetHeight(48) -- Search box (32px) + padding (8+8)
-    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -24, 0) -- Account for scroll bar
+    searchArea:SetHeight(48) -- Search box (32px) + padding (8 top + 8 bottom)
+    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -8) -- 8px from top
+    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -24, -8) -- Account for scroll bar
     searchArea:Hide() -- Hidden by default
     f.searchArea = searchArea
     
@@ -906,7 +906,7 @@ function WarbandNexus:PopulateContent()
                     0.4
                 )
                 itemsSearch:ClearAllPoints()
-                itemsSearch:SetPoint("TOPLEFT", 10, -8)
+                itemsSearch:SetPoint("TOPLEFT", 10, -4)
                 itemsSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 itemsSearch:Hide()
                 mainFrame.persistentSearchBoxes.items = itemsSearch
@@ -923,7 +923,7 @@ function WarbandNexus:PopulateContent()
                     0.4
                 )
                 storageSearch:ClearAllPoints()
-                storageSearch:SetPoint("TOPLEFT", 10, -8)
+                storageSearch:SetPoint("TOPLEFT", 10, -4)
                 storageSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 storageSearch:Hide()
                 mainFrame.persistentSearchBoxes.storage = storageSearch
@@ -940,7 +940,7 @@ function WarbandNexus:PopulateContent()
                     0.4
                 )
                 currencySearch:ClearAllPoints()
-                currencySearch:SetPoint("TOPLEFT", 10, -8)
+                currencySearch:SetPoint("TOPLEFT", 10, -4)
                 currencySearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 currencySearch:Hide()
                 mainFrame.persistentSearchBoxes.currency = currencySearch
@@ -957,7 +957,7 @@ function WarbandNexus:PopulateContent()
                     0.4
                 )
                 reputationSearch:ClearAllPoints()
-                reputationSearch:SetPoint("TOPLEFT", 10, -8)
+                reputationSearch:SetPoint("TOPLEFT", 10, -4)
                 reputationSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 reputationSearch:Hide()
                 mainFrame.persistentSearchBoxes.reputations = reputationSearch
@@ -1038,23 +1038,15 @@ function WarbandNexus:UpdateStatus()
     local isOpen = self.bankIsOpen
     
     if useOtherAddon then
-        -- Use theme color for "Cached" badge
-        local COLORS = ns.UI_COLORS or {}
-        local accentColor = COLORS.accent or {0.40, 0.20, 0.58}
-        
+        -- Hide badge when using other addon (cached)
         if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.25)
+            mainFrame.statusBadge.bg:SetColorTexture(0, 0, 0, 0)
         end
         if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.7)
+            mainFrame.statusBadge.border:SetBackdropBorderColor(0, 0, 0, 0)
         end
-        mainFrame.statusText:SetText("CACHED")
-        -- Brighten text color slightly
-        mainFrame.statusText:SetTextColor(
-            math.min(1, accentColor[1] * 1.8),
-            math.min(1, accentColor[2] * 1.8),
-            math.min(1, accentColor[3] * 1.8)
-        )
+        mainFrame.statusText:SetText("")
+        mainFrame.statusText:SetTextColor(0, 0, 0, 0)
     elseif isOpen then
         -- Green badge for "Bank On" (rounded style)
         if mainFrame.statusBadge.bg then
@@ -1066,17 +1058,15 @@ function WarbandNexus:UpdateStatus()
         mainFrame.statusText:SetText("LIVE")
         mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
     else
-        -- Use theme color for "Cached" badge (bank closed)
-        local COLORS = ns.UI_COLORS or {}
-        local accentColor = COLORS.accent or {0.40, 0.20, 0.58}
-        
+        -- Hide badge when bank closed (cached)
         if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.25)
+            mainFrame.statusBadge.bg:SetColorTexture(0, 0, 0, 0)
         end
         if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.7)
+            mainFrame.statusBadge.border:SetBackdropBorderColor(0, 0, 0, 0)
         end
-        mainFrame.statusText:SetText("CACHED")
+        mainFrame.statusText:SetText("")
+        mainFrame.statusText:SetTextColor(0, 0, 0, 0)
         -- Brighten text color slightly
         mainFrame.statusText:SetTextColor(
             math.min(1, accentColor[1] * 1.8),

@@ -194,7 +194,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
     end
     
-    local yOffset = 8
+    local yOffset = 0 -- No top padding when search bar is present
     local width = parent:GetWidth() - 20
     local indent = 20
     
@@ -290,7 +290,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         WarbandNexus:RefreshUI()
     end)
     
-    yOffset = yOffset + 78
+    yOffset = yOffset + 75
     
     -- ===== RENDER CHARACTERS =====
     local hasAnyData = false

@@ -911,7 +911,7 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end
     
-    local yOffset = 8
+    local yOffset = 0 -- No top padding when search bar is present
     local width = parent:GetWidth() - 20
     -- No base indent needed at function level
     
@@ -1057,7 +1057,7 @@ function WarbandNexus:DrawReputationTab(parent)
         GameTooltip:Hide()
     end)
     
-    yOffset = yOffset + 78
+    yOffset = yOffset + 75
     
     -- ===== RENDER CHARACTERS =====
     local hasAnyData = false

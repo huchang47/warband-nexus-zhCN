@@ -179,7 +179,7 @@ local function RefreshColors()
             for _, searchBox in pairs(f.persistentSearchBoxes) do
                 if searchBox and searchBox.searchFrame then
                     local borderColor = COLORS.accent
-                    searchBox.searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.5)
+                    searchBox.searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
                 end
             end
         end
@@ -1324,7 +1324,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     })
     searchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
     local borderColor = COLORS.accent
-    searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.5)
+    searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
     
     -- Search icon
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")

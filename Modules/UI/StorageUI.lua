@@ -41,7 +41,7 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
     
-    local yOffset = 8 -- Top padding for breathing room
+    local yOffset = 0 -- No top padding when search bar is present
     local width = parent:GetWidth() - 20
     local indent = 20
     
@@ -71,7 +71,7 @@ function WarbandNexus:DrawStorageTab(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Browse all items organized by type")
     
-    yOffset = yOffset + 78 -- Header height + spacing
+    yOffset = yOffset + 75 -- Header height + spacing
     
     -- NOTE: Search box is now persistent in UI.lua (searchArea)
     -- No need to create it here!

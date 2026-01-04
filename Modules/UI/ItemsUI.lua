@@ -39,7 +39,7 @@ local date = date
 --============================================================================
 
 function WarbandNexus:DrawItemList(parent)
-    local yOffset = 8 -- Top padding for breathing room
+    local yOffset = 0 -- No top padding when search bar is present
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
     
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
@@ -165,7 +165,7 @@ function WarbandNexus:DrawItemList(parent)
         GameTooltip:Hide()
     end)
     
-    yOffset = yOffset + 78 -- Header height + spacing
+    yOffset = yOffset + 75 -- Header height + spacing
     
     -- NOTE: Search box is now persistent in UI.lua (searchArea)
     -- No need to create it here!
@@ -201,11 +201,11 @@ function WarbandNexus:DrawItemList(parent)
         isPersonalActive and tabActiveColor[3] or tabInactiveColor[3],
         1
     )
-    -- Set border color
+    -- Set border color (always use accent color, vary opacity)
     if isPersonalActive then
         personalBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
     else
-        personalBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        personalBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
     end
     
     -- Remove old texture background (now using backdrop)
@@ -234,7 +234,7 @@ function WarbandNexus:DrawItemList(parent)
         if active then
             self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
         else
-            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
         end
     end)
     
@@ -258,11 +258,11 @@ function WarbandNexus:DrawItemList(parent)
         isWarbandActive and tabActiveColor[3] or tabInactiveColor[3],
         1
     )
-    -- Set border color
+    -- Set border color (always use accent color, vary opacity)
     if isWarbandActive then
         warbandBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
     else
-        warbandBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        warbandBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
     end
     
     -- Remove old texture background (now using backdrop)
@@ -291,7 +291,7 @@ function WarbandNexus:DrawItemList(parent)
         if active then
             self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
         else
-            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
         end
     end)
     
@@ -316,11 +316,11 @@ function WarbandNexus:DrawItemList(parent)
             isGuildActive and tabActiveColor[3] or tabInactiveColor[3],
             1
         )
-        -- Set border color
+        -- Set border color (always use accent color, vary opacity)
         if isGuildActive then
             guildBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
         else
-            guildBtn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            guildBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
         end
         
         -- Remove old texture background (now using backdrop)
@@ -363,7 +363,7 @@ function WarbandNexus:DrawItemList(parent)
             if active then
                 self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
             else
-                self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+                self:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
             end
         end)
     end -- ENABLE_GUILD_BANK
@@ -372,49 +372,9 @@ function WarbandNexus:DrawItemList(parent)
     if currentItemsSubTab == "warband" then
         -- Gold display for Warband Bank
         local goldDisplay = tabFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -160, 0)
+        goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
         local warbandGold = WarbandNexus:GetWarbandBankMoney() or 0
         goldDisplay:SetText(GetCoinTextureString(warbandGold))
-        
-        -- Deposit button
-        local depositBtn = CreateFrame("Button", nil, tabFrame, "UIPanelButtonTemplate")
-        depositBtn:SetSize(70, 24)
-        depositBtn:SetPoint("RIGHT", tabFrame, "RIGHT", -80, 0)
-        depositBtn:SetText("Deposit")
-        depositBtn:SetScript("OnClick", function()
-            if not WarbandNexus.bankIsOpen then
-                WarbandNexus:Print("|cffff6600Bank must be open to deposit gold.|r")
-                return
-            end
-            WarbandNexus:ShowGoldTransferPopup("warband", "deposit")
-        end)
-        depositBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Deposit Gold", 1, 0.82, 0)
-            GameTooltip:AddLine("Deposit gold to Warband Bank", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        depositBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        
-        -- Withdraw button
-        local withdrawBtn = CreateFrame("Button", nil, tabFrame, "UIPanelButtonTemplate")
-        withdrawBtn:SetSize(70, 24)
-        withdrawBtn:SetPoint("RIGHT", tabFrame, "RIGHT", -5, 0)
-        withdrawBtn:SetText("Withdraw")
-        withdrawBtn:SetScript("OnClick", function()
-            if not WarbandNexus.bankIsOpen then
-                WarbandNexus:Print("|cffff6600Bank must be open to withdraw gold.|r")
-                return
-            end
-            WarbandNexus:ShowGoldTransferPopup("warband", "withdraw")
-        end)
-        withdrawBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Withdraw Gold", 1, 0.82, 0)
-            GameTooltip:AddLine("Withdraw gold from Warband Bank", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        withdrawBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
     -- Personal Bank has no gold controls (WoW doesn't support gold storage in personal bank)
     
