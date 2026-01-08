@@ -331,11 +331,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     -- Collect characters with currencies
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-        local isOnline = (charKey == currentCharKey)
-        
+            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+            local isOnline = (charKey == currentCharKey)
+            
         -- Build currencies for this character from global storage
-        local matchingCurrencies = {}
+            local matchingCurrencies = {}
         
         for currencyID, currData in pairs(globalCurrencies) do
             -- Get quantity for this character
@@ -363,24 +363,24 @@ function WarbandNexus:DrawCurrencyTab(parent)
             local passesZeroFilter = showZero or (quantity > 0)
             
             if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
-                table.insert(matchingCurrencies, {
-                    id = currencyID,
-                    data = currency,
-                })
+                    table.insert(matchingCurrencies, {
+                        id = currencyID,
+                        data = currency,
+                    })
+                end
             end
-        end
-        
-        if #matchingCurrencies > 0 then
-            hasAnyData = true
+            
+            if #matchingCurrencies > 0 then
+                hasAnyData = true
             
             -- Also attach headers to character data for non-filtered mode
             local charDataWithHeaders = {
-                char = char,
-                key = charKey,
-                currencies = matchingCurrencies,
+                    char = char,
+                    key = charKey,
+                    currencies = matchingCurrencies,
                 currencyHeaders = globalHeaders,  -- Use global headers
-                isOnline = isOnline,
-                sortPriority = isOnline and 0 or 1,
+                    isOnline = isOnline,
+                    sortPriority = isOnline and 0 or 1,
             }
             
             table.insert(charactersWithCurrencies, charDataWithHeaders)

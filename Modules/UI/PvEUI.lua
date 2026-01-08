@@ -514,10 +514,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local typeNum = activity.type
                 
                 if Enum and Enum.WeeklyRewardChestThresholdType then
-                    if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
-                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
+                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
                     end
                 else
                     -- Fallback numeric values based on API:

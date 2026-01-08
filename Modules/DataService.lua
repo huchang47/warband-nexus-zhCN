@@ -63,6 +63,7 @@ end
 --[[
     Collect detailed expansion data for currently open profession
     Called when TRADE_SKILL_SHOW or related events fire
+    Now also collects knowledge points, specialization data, and recipe counts
     @return boolean - Success
 ]]
 function WarbandNexus:UpdateDetailedProfessionData()
@@ -94,20 +95,31 @@ function WarbandNexus:UpdateDetailedProfessionData()
         
         -- Find which profession slot matches the open profession
         local targetProf = nil
+        local targetProfKey = nil
         
         -- Check primary professions
         for i = 1, 2 do
             if professions[i] and professions[i].skillLine == baseInfo.professionID then
                 targetProf = professions[i]
+                targetProfKey = i
                 break
             end
         end
         
         -- Check secondary
         if not targetProf then
-            if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then targetProf = professions.cooking end
-            if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then targetProf = professions.fishing end
-            if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then targetProf = professions.archaeology end
+            if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then 
+                targetProf = professions.cooking 
+                targetProfKey = "cooking"
+            end
+            if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then 
+                targetProf = professions.fishing 
+                targetProfKey = "fishing"
+            end
+            if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then 
+                targetProf = professions.archaeology 
+                targetProfKey = "archaeology"
+            end
         end
         
         -- If we found the matching profession, update its expansion data
@@ -121,20 +133,79 @@ function WarbandNexus:UpdateDetailedProfessionData()
                 -- We can get the info for this specific child ID
                 local info = C_TradeSkillUI.GetProfessionInfoBySkillLineID(child.professionID)
                 if info then
-                    table.insert(targetProf.expansions, {
+                    local expansionData = {
                         name = child.expansionName or info.professionName, -- Expansion name like "Dragon Isles Alchemy"
                         skillLine = child.professionID,
                         rank = info.skillLevel,
                         maxRank = info.maxSkillLevel,
-                    })
+                    }
+                    
+                    -- NEW: Collect knowledge points (Dragonflight+ profession currency)
+                    if C_ProfSpecs and C_ProfSpecs.GetCurrencyInfoForSkillLine then
+                        local currencyInfo = C_ProfSpecs.GetCurrencyInfoForSkillLine(child.professionID)
+                        if currencyInfo then
+                            expansionData.knowledgePoints = {
+                                current = currencyInfo.quantity or 0,
+                                max = currencyInfo.maxQuantity or 0,
+                                unspent = currencyInfo.quantity or 0,
+                            }
+                        end
+                    end
+                    
+                    -- NEW: Check if this expansion has specializations
+                    if C_ProfSpecs and C_ProfSpecs.SkillLineHasSpecialization then
+                        local hasSpec = C_ProfSpecs.SkillLineHasSpecialization(child.professionID)
+                        expansionData.hasSpecialization = hasSpec
+                        
+                        -- Get specialization tab info if available
+                        if hasSpec and C_ProfSpecs.GetSpecTabIDsForSkillLine then
+                            local tabIDs = C_ProfSpecs.GetSpecTabIDsForSkillLine(child.professionID)
+                            if tabIDs and #tabIDs > 0 then
+                                expansionData.specializations = {}
+                                local configID = C_ProfSpecs.GetConfigIDForSkillLine(child.professionID)
+                                
+                                for _, tabID in ipairs(tabIDs) do
+                                    local tabInfo = C_ProfSpecs.GetTabInfo and C_ProfSpecs.GetTabInfo(tabID)
+                                    local state = configID and C_ProfSpecs.GetStateForTab and C_ProfSpecs.GetStateForTab(configID, tabID)
+                                    
+                                    if tabInfo then
+                                        table.insert(expansionData.specializations, {
+                                            name = tabInfo.name or "Unknown",
+                                            state = state or "unknown",
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    table.insert(targetProf.expansions, expansionData)
                 end
             end
             
-            -- Sort expansions by ID or something meaningful (usually highest ID = newest)
+            -- Sort expansions by ID (usually highest ID = newest)
             table.sort(targetProf.expansions, function(a, b) 
                 return a.skillLine > b.skillLine 
             end)
             
+            -- NEW: Collect recipe counts for this profession
+            local allRecipes = C_TradeSkillUI.GetAllRecipeIDs()
+            if allRecipes and #allRecipes > 0 then
+                local knownCount = 0
+                for _, recipeID in ipairs(allRecipes) do
+                    local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
+                    if recipeInfo and recipeInfo.learned then
+                        knownCount = knownCount + 1
+                    end
+                end
+                targetProf.recipes = {
+                    known = knownCount,
+                    total = #allRecipes,
+                }
+            end
+            
+            -- NEW: Store last scan timestamp
+            targetProf.lastDetailedScan = time()
             
             -- Invalidate cache so UI refreshes
             if self.InvalidateCharacterCache then
@@ -370,6 +441,182 @@ function WarbandNexus:GetAllCharacters()
     end)
     
     return characters
+end
+
+--[[
+    Get characters logged in within the last X days
+    Used for Weekly Planner feature
+    @param days number - Number of days to look back (default 3)
+    @return table - Array of recently active characters
+]]
+function WarbandNexus:GetRecentCharacters(days)
+    days = days or 3
+    local cutoff = time() - (days * 86400)
+    local recent = {}
+    
+    if not self.db.global.characters then
+        return recent
+    end
+    
+    for key, char in pairs(self.db.global.characters) do
+        if char.lastSeen and char.lastSeen >= cutoff then
+            char._key = key  -- Include key for reference
+            table.insert(recent, char)
+        end
+    end
+    
+    -- Sort by lastSeen (most recent first)
+    table.sort(recent, function(a, b)
+        return (a.lastSeen or 0) > (b.lastSeen or 0)
+    end)
+    
+    return recent
+end
+
+--[[
+    Generate weekly planner alerts for recently active characters
+    Checks: Great Vault, Knowledge Points, Reputation Milestones, M+ Keys
+    @return table - Array of alert objects sorted by priority
+]]
+function WarbandNexus:GenerateWeeklyAlerts()
+    local alerts = {}
+    local days = (self.db and self.db.profile and self.db.profile.weeklyPlannerDays) or 3
+    local recentChars = self:GetRecentCharacters(days)
+    
+    if not recentChars then return alerts end
+    
+    for _, char in ipairs(recentChars) do
+        local charKey = char._key or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
+        local charName = char.name or "Unknown"
+        
+        -- Safely get class color
+        local classColor = { r = 1, g = 1, b = 1 }
+        if char.classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[char.classFile] then
+            classColor = RAID_CLASS_COLORS[char.classFile]
+        end
+        local coloredName = string.format("|cff%02x%02x%02x%s|r", 
+            (classColor.r or 1) * 255, (classColor.g or 1) * 255, (classColor.b or 1) * 255, charName)
+        
+        -- ===== CHECK GREAT VAULT =====
+        local pveData = self.GetCachedPvEData and self:GetCachedPvEData(charKey)
+        if pveData and pveData.greatVault then
+            local filledSlots = 0
+            local totalSlots = 0
+            
+            for _, activity in ipairs(pveData.greatVault) do
+                if activity.progress then
+                    for _, slot in ipairs(activity.progress) do
+                        totalSlots = totalSlots + 1
+                        if slot.progress and slot.threshold and slot.progress >= slot.threshold then
+                            filledSlots = filledSlots + 1
+                        end
+                    end
+                end
+            end
+            
+            -- Alert if less than 3 slots filled (assuming 3 per row, 9 total)
+            local slotsToFill = math.max(0, 3 - filledSlots)
+            if slotsToFill > 0 and filledSlots < 9 then
+                table.insert(alerts, {
+                    type = "vault",
+                    icon = "Interface\\Icons\\Achievement_Dungeon_GlsoDungeon_Heroic",
+                    character = coloredName,
+                    charKey = charKey,
+                    message = slotsToFill .. " Great Vault slot" .. (slotsToFill > 1 and "s" or "") .. " to fill",
+                    priority = 1,
+                })
+            end
+        end
+        
+        -- ===== CHECK UNSPENT KNOWLEDGE POINTS =====
+        if char.professions then
+            for profKey, prof in pairs(char.professions) do
+                if type(prof) == "table" and prof.expansions then
+                    for _, exp in ipairs(prof.expansions) do
+                        if exp.knowledgePoints and exp.knowledgePoints.unspent and exp.knowledgePoints.unspent > 0 then
+                            table.insert(alerts, {
+                                type = "knowledge",
+                                icon = prof.icon or "Interface\\Icons\\INV_Misc_Book_09",
+                                character = coloredName,
+                                charKey = charKey,
+                                message = exp.knowledgePoints.unspent .. " Knowledge Point" .. 
+                                    (exp.knowledgePoints.unspent > 1 and "s" or "") .. 
+                                    " (" .. (prof.name or "Profession") .. ")",
+                                priority = 2,
+                            })
+                            break  -- Only one alert per profession
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- ===== CHECK REPUTATION MILESTONES (within 500 of next level) =====
+        local reps = self.db.global.reputations
+        if reps then
+            for factionID, repData in pairs(reps) do
+                if repData.chars and repData.chars[charKey] then
+                    local charRep = repData.chars[charKey]
+                    local repToNext = 0
+                    local nextLevel = nil
+                    
+                    -- Check renown progress
+                    if charRep.renownLevel and charRep.renownProgress and charRep.renownThreshold then
+                        repToNext = (charRep.renownThreshold or 0) - (charRep.renownProgress or 0)
+                        if repToNext > 0 and repToNext <= 500 then
+                            nextLevel = "Renown " .. ((charRep.renownLevel or 0) + 1)
+                        end
+                    end
+                    
+                    -- Check classic reputation progress
+                    if not nextLevel and charRep.currentRep and charRep.nextThreshold then
+                        repToNext = (charRep.nextThreshold or 0) - (charRep.currentRep or 0)
+                        if repToNext > 0 and repToNext <= 500 then
+                            -- Get next standing name
+                            local standings = {"Hated", "Hostile", "Unfriendly", "Neutral", "Friendly", "Honored", "Revered", "Exalted"}
+                            local currentStanding = charRep.standingID or 4
+                            if currentStanding < 8 then
+                                nextLevel = standings[currentStanding + 1]
+                            end
+                        end
+                    end
+                    
+                    if nextLevel and repToNext > 0 then
+                        table.insert(alerts, {
+                            type = "reputation",
+                            icon = repData.icon or "Interface\\Icons\\Achievement_Reputation_01",
+                            character = coloredName,
+                            charKey = charKey,
+                            message = repToNext .. " rep to " .. nextLevel .. " (" .. (repData.name or "Faction") .. ")",
+                            priority = 3,
+                        })
+                    end
+                end
+            end
+        end
+        
+        -- ===== CHECK M+ KEYSTONE =====
+        if pveData and pveData.mythicPlus and pveData.mythicPlus.keystone then
+            local ks = pveData.mythicPlus.keystone
+            if ks.mapID and ks.level then
+                -- Has a key - could add logic to check if run this week
+                -- For now, just note they have a key available
+                -- We'll skip this alert to avoid noise, but structure is here for future
+            end
+        end
+    end
+    
+    -- Sort by priority (lower = more important)
+    if #alerts > 0 then
+        table.sort(alerts, function(a, b)
+            if (a.priority or 99) ~= (b.priority or 99) then
+                return (a.priority or 99) < (b.priority or 99)
+            end
+            return (a.character or "") < (b.character or "")
+        end)
+    end
+    
+    return alerts
 end
 
 -- ============================================================================

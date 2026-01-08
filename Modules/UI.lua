@@ -591,7 +591,7 @@ function WarbandNexus:CreateMainWindow()
     -- Tab styling function
     local function CreateTabButton(parent, text, key, xOffset)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetSize(105, 34)  -- Slightly taller for modern look
+        btn:SetSize(95, 34)  -- Slightly narrower to fit 8 tabs
         btn:SetPoint("LEFT", xOffset, 0)
         btn.key = key
 
@@ -656,15 +656,16 @@ function WarbandNexus:CreateMainWindow()
         return btn
     end
     
-    -- Create tabs with equal spacing (105px width + 5px gap = 110px spacing)
-    local tabSpacing = 110
+    -- Create tabs with tighter spacing to fit 8 tabs (95px width + 5px gap = 100px spacing)
+    local tabSpacing = 100
     f.tabButtons["chars"] = CreateTabButton(nav, "Characters", "chars", 10)
     f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
     f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
     f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
     f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 4)
     f.tabButtons["currency"] = CreateTabButton(nav, "Currencies", "currency", 10 + tabSpacing * 5)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 6)
+    f.tabButtons["plans"] = CreateTabButton(nav, "Plans", "plans", 10 + tabSpacing * 6)
+    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 7)
     
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
@@ -1019,6 +1020,8 @@ function WarbandNexus:PopulateContent()
         height = self:DrawReputationTab(scrollChild)
     elseif mainFrame.currentTab == "stats" then
         height = self:DrawStatistics(scrollChild)
+    elseif mainFrame.currentTab == "plans" then
+        height = self:DrawPlansTab(scrollChild)
     else
         height = self:DrawCharacterList(scrollChild)
     end

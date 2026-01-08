@@ -197,8 +197,18 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         if not C_PetJournal then return nil end
         
         local speciesID = nil
+        local speciesName = nil
+        local speciesIcon = nil
+        
+        -- GetPetInfoByItemID returns: speciesName, speciesIcon, petType, companionID, ...
+        -- companionID (4th return) is the speciesID
         if C_PetJournal.GetPetInfoByItemID then
-            speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
+            local petName, petIcon, petType, companionID = C_PetJournal.GetPetInfoByItemID(itemID)
+            if companionID and type(companionID) == "number" then
+                speciesID = companionID
+                speciesName = petName
+                speciesIcon = petIcon
+            end
         end
 
         if speciesID then
@@ -208,8 +218,12 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
                 return nil -- Already own at least one
             end
             
-            local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            return {
+            -- Use already captured name/icon or fetch from speciesID
+            if not speciesName then
+                speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            end
+            
+             return {
                 type = "pet",
                 id = speciesID,
                 name = speciesName or itemName or "Unknown Pet",
@@ -229,16 +243,16 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         local mountID = C_MountJournal.GetMountFromItem(itemID)
         if mountID then
             local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-            if name then
+                if name then
                 if isCollected then
                     return nil -- Already owned
                 end
-                return {
-                    type = "mount",
-                    id = mountID,
-                    name = name,
-                    icon = icon
-                }
+                    return {
+                        type = "mount",
+                        id = mountID,
+                        name = name,
+                        icon = icon
+                    }
             end
         end
     end
@@ -252,13 +266,13 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
             if numOwned and numOwned > 0 then
                 return nil -- Already own at least one
             end
-            local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            return {
-                type = "pet",
-                id = speciesID,
-                name = speciesName or itemName or "Unknown Pet",
-                icon = speciesIcon or itemIcon or 134400
-            }
+                local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                 return {
+                    type = "pet",
+                    id = speciesID,
+                    name = speciesName or itemName or "Unknown Pet",
+                    icon = speciesIcon or itemIcon or 134400
+                }
         end
     end
     
@@ -447,25 +461,90 @@ function WarbandNexus:OnCollectionUpdated(event, ...)
     end
     
     if type and id and name then
-        self:UpdateCollectionCache(type, id)
-        
         local trackingKey = type .. "_" .. id
         
-        -- Unified deduplication check (30 second window)
+        -- Unified deduplication check (30 second window) - CHECK FIRST
         if self:WasRecentlyNotified(trackingKey) then
             return
         end
         
-        -- Mark as notified and show toast
+        -- Mark as notified IMMEDIATELY to prevent duplicates
         self:MarkAsNotified(trackingKey, "learned")
         
-        self:ShowCollectibleToast({
-            type = type,
-            id = id,
-            name = name,
-            icon = icon
-        })
+        -- Update cache
+        self:UpdateCollectionCache(type, id)
+        
+        -- Check if this completes a plan
+        local completedPlan = self:CheckPlanCompletion(type, id)
+        
+        if completedPlan then
+            -- Show plan completion notification
+            if self.ShowToastNotification then
+                -- Map type to category display
+                local categoryMap = {
+                    mount = "MOUNT",
+                    pet = "PET",
+                    toy = "TOY",
+                    recipe = "RECIPE",
+                }
+                
+                self:ShowToastNotification({
+                    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                    title = "Plan Completed!",
+                    subtitle = "Added to Collection",
+                    message = name,
+                    category = categoryMap[type] or "PLAN",
+                    planType = type,
+                    autoDismiss = 8,
+                    playSound = true,
+                })
+            end
+        else
+            -- Show regular collectible toast
+            self:ShowCollectibleToast({
+                type = type,
+                id = id,
+                name = name,
+                icon = icon
+            })
+        end
     end
+end
+
+---Check if a collected item completes an active plan
+---@param itemType string - "mount", "pet", or "toy"
+---@param itemId number - The ID of the collected item
+---@return table|nil - The completed plan or nil
+function WarbandNexus:CheckPlanCompletion(itemType, itemId)
+    if not self.db or not self.db.global or not self.db.global.plans then
+        return nil
+    end
+    
+    -- Map item type to plan type
+    local planTypeMap = {
+        mount = "mount",
+        pet = "pet",
+        toy = "toy",
+    }
+    
+    local planType = planTypeMap[itemType]
+    if not planType then return nil end
+    
+    -- Check all active plans
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == planType then
+            -- Check if IDs match
+            if planType == "mount" and plan.mountID == itemId then
+                return plan
+            elseif planType == "pet" and plan.speciesID == itemId then
+                return plan
+            elseif planType == "toy" and plan.itemID == itemId then
+                return plan
+            end
+        end
+    end
+    
+    return nil
 end
 
 ---Update bag snapshot

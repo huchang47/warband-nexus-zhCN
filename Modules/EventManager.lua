@@ -520,16 +520,52 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
     end
     
     local factionID = nil
+    local newRenownLevel = nil
     
     -- Extract factionID from event payload
     if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
-        factionID = ... -- First arg is majorFactionID
+        factionID, newRenownLevel = ... -- First arg is majorFactionID, second is new level
     elseif event == "MAJOR_FACTION_UNLOCKED" then
         factionID = ... -- First arg is majorFactionID
     end
     -- Note: UPDATE_FACTION doesn't provide factionID
     
-    Debounce("REPUTATION_UPDATE", 0.5, function()
+    -- For immediate renown level changes, update without debounce
+    if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" and factionID then
+        if self.UpdateSingleReputation then
+            self:UpdateSingleReputation(factionID)
+        end
+        
+        -- Send message immediately for renown changes
+        if self.SendMessage then
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+        end
+        
+        -- Refresh UI immediately for renown changes
+        local mainFrame = self.UI and self.UI.mainFrame
+        if mainFrame and mainFrame:IsShown() and self.RefreshUI then
+            self:RefreshUI()
+        end
+        
+        -- Show notification for renown level up
+        if newRenownLevel and C_MajorFactions then
+            local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+            if majorData and self.ShowToastNotification then
+                local COLORS = ns.UI_COLORS or {accent = {0.2, 0.8, 1}}
+                self:ShowToastNotification({
+                    icon = majorData.textureKit and string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit) or "Interface\\Icons\\Achievement_Reputation_08",
+                    title = "Renown Increased!",
+                    message = string.format("%s is now Renown %d", majorData.name or "Faction", newRenownLevel),
+                    color = COLORS.accent,
+                    autoDismiss = 3,
+                })
+            end
+        end
+        return
+    end
+    
+    -- For other reputation events, use debounce to prevent spam
+    Debounce("REPUTATION_UPDATE", 0.1, function()
         if factionID and self.UpdateSingleReputation then
             -- Incremental update for specific faction
             self:UpdateSingleReputation(factionID)
@@ -546,9 +582,9 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
         
-        -- Refresh UI if reputation tab is open
+        -- Refresh UI if addon window is open and visible
         local mainFrame = self.UI and self.UI.mainFrame
-        if mainFrame and mainFrame.currentTab == "reputations" and self.RefreshUI then
+        if mainFrame and mainFrame:IsShown() and self.RefreshUI then
             self:RefreshUI()
         end
     end)

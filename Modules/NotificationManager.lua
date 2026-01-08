@@ -220,6 +220,9 @@ end
 if not WarbandNexus.toastQueue then
     WarbandNexus.toastQueue = {} -- Waiting toasts (if >3 active)
 end
+if not WarbandNexus.isProcessingToast then
+    WarbandNexus.isProcessingToast = false -- Flag to prevent simultaneous toast creation
+end
 
 ---Show a generic toast notification (unified style for all notifications)
 ---@param config table Configuration: {icon, title, message, color, autoDismiss, onClose}
@@ -230,74 +233,255 @@ function WarbandNexus:ShowToastNotification(config)
         return
     end
     
+    -- If we're already processing a toast from the queue, wait
+    if self.isProcessingToast then
+        table.insert(self.toastQueue, config)
+        return
+    end
+    
+    -- Mark as processing
+    self.isProcessingToast = true
+    
     -- Default values
     config = config or {}
     local iconTexture = config.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
     local titleText = config.title or "Notification"
     local messageText = config.message or ""
-    local titleColor = config.titleColor or {0.6, 0.4, 0.9} -- Purple by default
-    local autoDismissDelay = config.autoDismiss or 10 -- seconds
+    local categoryText = config.category or nil
+    local subtitleText = config.subtitle or ""
+    local planType = config.planType or "custom" -- mount, pet, toy, custom
+    local autoDismissDelay = config.autoDismiss or 8 -- Default 8 seconds (was too fast at 10 with old timing)
     local onCloseCallback = config.onClose
+    local playSound = config.playSound ~= false -- Default true
     
-    -- Calculate vertical position (stack toasts: 1st=-150, 2nd=-300, 3rd=-450)
+    -- Type-specific colors (gold for mount, green for pet, yellow for toy, purple for custom)
+    local typeColors = {
+        mount = {1.0, 0.8, 0.2},     -- Gold
+        pet = {0.3, 1.0, 0.4},       -- Green
+        toy = {1.0, 0.9, 0.2},       -- Yellow
+        custom = {0.6, 0.4, 0.9},    -- Purple
+        recipe = {0.8, 0.8, 0.5},    -- Tan
+    }
+    local titleColor = config.titleColor or typeColors[planType] or typeColors.custom
+    
+    -- Calculate vertical position (stack toasts: 1st=-100, 2nd=-220, 3rd=-340)
     local toastIndex = #self.activeToasts + 1
-    local yOffset = -150 * toastIndex
+    local toastHeight = 70 -- Compact height
+    local toastSpacing = 10
+    local yOffset = -(100 + (toastIndex - 1) * (toastHeight + toastSpacing))
     
-    -- Small popup frame (no full screen overlay - just a toast)
+    -- === MAIN POPUP FRAME ===
     local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    popup:SetSize(450, 130)
+    popup:SetSize(360, toastHeight) -- Compact width
     popup:SetPoint("TOP", UIParent, "TOP", 0, yOffset)
     popup:SetFrameStrata("DIALOG")
-    popup:SetFrameLevel(1000 + toastIndex) -- Stack level
+    popup:SetFrameLevel(1000 + toastIndex)
+    popup:EnableMouse(true)
+    
+    -- Premium backdrop with balanced border
     popup:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         tile = false,
-        tileSize = 16,
-        edgeSize = 14,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        edgeSize = 2,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
     })
-    popup:SetBackdropColor(0.08, 0.08, 0.10, 1.0) -- 100% opaque (was 0.95)
-    popup:SetBackdropBorderColor(0.4, 0.2, 0.58, 1) -- Purple border (consistent)
+    
+    -- Darker background for contrast
+    popup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+    popup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
     -- Track this toast
     table.insert(self.activeToasts, popup)
     popup.toastIndex = toastIndex
+    popup.isClosing = false
     
-    -- Subtle glow effect
-    local glow = popup:CreateTexture(nil, "BACKGROUND")
-    glow:SetPoint("TOPLEFT", -8, 8)
-    glow:SetPoint("BOTTOMRIGHT", 8, -8)
-    glow:SetColorTexture(titleColor[1], titleColor[2], titleColor[3], 0.08)
+    -- === BACKGROUND LAYERS ===
+    -- Background glows removed for cleaner look
     
-    -- Icon (top, centered)
-    local icon = popup:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(50, 50)
-    icon:SetPoint("TOP", 0, -15)
-    icon:SetTexture(iconTexture)
+    -- All shine effects removed (were causing lighter areas)
     
-    -- Title (centered, below icon)
-    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", icon, "BOTTOM", 0, -8)
-    title:SetJustifyH("CENTER")
-    title:SetText(string.format("|cff%02x%02x%02x%s|r", 
-        titleColor[1] * 255, titleColor[2] * 255, titleColor[3] * 255, titleText))
+    -- === ICON WITH PREMIUM FRAME (LEFT SIDE) ===
+    -- Icon outer glow removed for cleaner look
     
-    -- Message (centered, single line, below title)
+    -- Icon border frame (compact, transparent background)
+    local iconBorder = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    iconBorder:SetSize(54, 54)
+    iconBorder:SetPoint("LEFT", 8, 0)
+    iconBorder:SetBackdrop({
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 2,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    iconBorder:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    
+    -- Icon inner frame (double border effect)
+    local iconInnerBorder = CreateFrame("Frame", nil, iconBorder, "BackdropTemplate")
+    iconInnerBorder:SetPoint("TOPLEFT", 3, -3)
+    iconInnerBorder:SetPoint("BOTTOMRIGHT", -3, 3)
+    iconInnerBorder:SetBackdrop({
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    iconInnerBorder:SetBackdropBorderColor(titleColor[1] * 0.5, titleColor[2] * 0.5, titleColor[3] * 0.5, 0.5)
+    
+    -- Icon texture (perfectly fitted)
+    local icon = iconBorder:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", 3, -3)
+    icon:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", -3, 3)
+    icon:SetDrawLayer("ARTWORK", 1)
+    
+    -- Handle both numeric IDs and texture paths
+    if type(iconTexture) == "number" then
+        icon:SetTexture(iconTexture)
+    elseif iconTexture and iconTexture ~= "" then
+        -- Clean the path and set texture
+        local cleanPath = iconTexture:gsub("\\", "/")
+        icon:SetTexture(cleanPath)
+    else
+        icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+    end
+    
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    icon:Show()
+    
+    -- Icon glow removed for cleaner look
+    -- Create a placeholder texture for animation compatibility
+    local iconGlow = iconBorder:CreateTexture(nil, "BACKGROUND")
+    iconGlow:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", -1, 1)
+    iconGlow:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", 1, -1)
+    iconGlow:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    iconGlow:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0)  -- Invisible
+    iconGlow:SetBlendMode("ADD")
+    
+    -- === CONTENT AREA (RIGHT OF ICON) ===
+    
+    -- === CONTENT LAYOUT (BALANCED HIERARCHY) ===
+    
+    -- Achievement-style decorative corner (smaller)
+    local cornerDecor = popup:CreateTexture(nil, "OVERLAY")
+    cornerDecor:SetSize(16, 16)
+    cornerDecor:SetPoint("TOPRIGHT", -3, -3)
+    cornerDecor:SetTexture("Interface\\AchievementFrame\\UI-Achievement-TinyShields")
+    cornerDecor:SetTexCoord(0, 0.5, 0, 0.5)
+    cornerDecor:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.6)
+    
+    -- Category badge (compact style)
+    if categoryText then
+        local categoryBadge = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
+        categoryBadge:SetPoint("TOPRIGHT", -22, -5)
+        categoryBadge:SetText(string.format("|cff%02x%02x%02x• %s •|r",
+            titleColor[1]*220, titleColor[2]*220, titleColor[3]*220, categoryText:upper()))
+        categoryBadge:SetJustifyH("RIGHT")
+        categoryBadge:SetShadowOffset(1, -1)
+        categoryBadge:SetShadowColor(0, 0, 0, 0.8)
+    end
+    
+    -- Title (compact, vertically centered)
+    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, -6)
+    title:SetPoint("RIGHT", -30, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    title:SetShadowOffset(1, -1)
+    title:SetShadowColor(0, 0, 0, 0.9)
+    
+    -- Create bright gradient text for title
+    local titleGradient = string.format("|cff%02x%02x%02x%s|r",
+        math.min(255, titleColor[1]*255*1.4),
+        math.min(255, titleColor[2]*255*1.4),
+        math.min(255, titleColor[3]*255*1.4),
+        titleText)
+    title:SetText(titleGradient)
+    
+    -- Subtitle (if provided)
+    local yOffsetMessage = -22
+    if subtitleText and subtitleText ~= "" then
+        local subtitle = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
+        subtitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, -22)
+        subtitle:SetPoint("RIGHT", -30, 0)
+        subtitle:SetJustifyH("LEFT")
+        subtitle:SetText("|cffcccccc" .. subtitleText .. "|r")
+        subtitle:SetWordWrap(true)
+        subtitle:SetShadowOffset(1, -1)
+        subtitle:SetShadowColor(0, 0, 0, 0.6)
+        yOffsetMessage = -36
+    end
+    
+    -- Message (main content - compact)
     local message = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    message:SetPoint("TOP", title, "BOTTOM", 0, -6)
-    message:SetJustifyH("CENTER")
+    message:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, yOffsetMessage)
+    message:SetPoint("RIGHT", -30, 0)
+    message:SetJustifyH("LEFT")
     message:SetText(messageText)
-    message:SetTextColor(0.85, 0.85, 0.85)
+    message:SetTextColor(1, 1, 1)
+    message:SetWordWrap(true)
+    message:SetMaxLines(2)
+    message:SetShadowOffset(1, -1)
+    message:SetShadowColor(0, 0, 0, 0.9)
     
-    -- Helper function to remove this toast and process queue
+    -- === PROGRESS BAR (compact auto-dismiss indicator) ===
+    
+    local progressBarBg = popup:CreateTexture(nil, "BORDER")
+    progressBarBg:SetPoint("BOTTOMLEFT", 2, 2)
+    progressBarBg:SetPoint("BOTTOMRIGHT", -2, 2)
+    progressBarBg:SetHeight(2)
+    progressBarBg:SetColorTexture(0.1, 0.1, 0.1, 0.9)
+    
+    local progressBar = popup:CreateTexture(nil, "ARTWORK")
+    progressBar:SetPoint("BOTTOMLEFT", 2, 2)
+    progressBar:SetHeight(2)
+    progressBar:SetWidth(popup:GetWidth() - 4)
+    progressBar:SetColorTexture(titleColor[1]*0.7, titleColor[2]*0.7, titleColor[3]*0.7, 1)
+    
+    -- Progress bar shine overlay removed (no shine effects allowed)
+    local progressShine = popup:CreateTexture(nil, "OVERLAY")
+    progressShine:SetPoint("BOTTOMLEFT", 2, 2)
+    progressShine:SetHeight(2)
+    progressShine:SetWidth(popup:GetWidth() - 4)
+    progressShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    progressShine:SetColorTexture(0, 0, 0, 0)  -- Invisible placeholder for animation compatibility
+    
+    -- White flash effect overlay (exact same size as toast)
+    local flashOverlay = popup:CreateTexture(nil, "OVERLAY", nil, 7)
+    flashOverlay:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    flashOverlay:SetSize(360, 70) -- Exact toast size
+    flashOverlay:SetPoint("CENTER", popup, "CENTER", 0, 0)
+    flashOverlay:SetVertexColor(1, 1, 1)
+    flashOverlay:SetBlendMode("ADD")
+    flashOverlay:SetAlpha(0)
+    
+    -- === SOUND EFFECT ===
+    
+    if playSound then
+        -- Play a pleasant completion sound
+        PlaySound(44295) -- SOUNDKIT.UI_EPICACHIEVEMENTUNLOCKED (lighter alternative: 888)
+    end
+    
+    -- Helper function to remove this toast and process queue (must be defined before use)
     local function CloseToast()
+        -- Cancel timers safely
+        if popup and popup.progressTimer then
+            popup.progressTimer:Cancel()
+            popup.progressTimer = nil
+        end
+        if popup and popup.dismissTimer then
+            popup.dismissTimer:Cancel()
+            popup.dismissTimer = nil
+        end
+        
         -- Remove from active toasts
+        local wasRemoved = false
         for i, toast in ipairs(self.activeToasts) do
             if toast == popup then
                 table.remove(self.activeToasts, i)
+                wasRemoved = true
                 break
             end
+        end
+        
+        if not wasRemoved then
+            return -- Toast was already removed, prevent duplicate processing
         end
         
         popup:Hide()
@@ -306,102 +490,217 @@ function WarbandNexus:ShowToastNotification(config)
         -- Call user callback
         if onCloseCallback then onCloseCallback() end
         
-        -- Reposition remaining toasts
+        -- Reposition ALL remaining toasts (always reposition for perfect queue)
+        local stackHeight = 70 -- Must match toastHeight above
+        local stackSpacing = 10 -- Must match toastSpacing above
+        
         for i, toast in ipairs(self.activeToasts) do
-            local newYOffset = -150 * i
+            -- Recalculate position based on NEW index
+            local newYOffset = -(100 + (i - 1) * (stackHeight + stackSpacing))
+            
+            -- ALWAYS clear old position and set new one
             toast:ClearAllPoints()
             toast:SetPoint("TOP", UIParent, "TOP", 0, newYOffset)
+            
+            -- Update frame properties
             toast:SetFrameLevel(1000 + i)
             toast.toastIndex = i
         end
         
-        -- Show next queued toast (if any)
-        if #self.toastQueue > 0 then
+        -- Show next queued toast (if any) - wait for repositioning to complete
+        if #self.toastQueue > 0 and #self.activeToasts < 3 then
             local nextConfig = table.remove(self.toastQueue, 1)
-            C_Timer.After(0.2, function() -- Small delay for smooth appearance
-                self:ShowToastNotification(nextConfig)
+            C_Timer.After(0.3, function() -- Fixed delay after repositioning
+                if self and self.ShowToastNotification and #self.activeToasts < 3 then
+                    self:ShowToastNotification(nextConfig)
+                end
             end)
         end
     end
     
-    -- Close button (X button, top-right)
-    local closeBtn = CreateFrame("Button", nil, popup)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", -8, -8)
+    -- === HOVER EFFECTS & CLICK TO DISMISS ===
     
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    closeBtnText:SetPoint("CENTER")
-    closeBtnText:SetText("|cff888888×|r")
-    
-    closeBtn:SetScript("OnClick", function()
-        CloseToast()
+    popup:SetScript("OnEnter", function(self)
+        -- Brighten border on hover
+        self:SetBackdropBorderColor(
+            math.min(1, titleColor[1]*1.3),
+            math.min(1, titleColor[2]*1.3),
+            math.min(1, titleColor[3]*1.3),
+            1
+        )
     end)
     
-    closeBtn:SetScript("OnEnter", function()
-        closeBtnText:SetText("|cffffffff×|r")
+    popup:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     end)
     
-    closeBtn:SetScript("OnLeave", function()
-        closeBtnText:SetText("|cff888888×|r")
-    end)
-    
-    -- Auto-dismiss after animation completes + delay
-    local totalDelay = 0.6 + autoDismissDelay -- 0.6s animation + user-defined delay
-    C_Timer.After(totalDelay, function()
-        if popup and popup:IsShown() then
-            local fadeOutAg = popup:CreateAnimationGroup()
-            local fadeOut = fadeOutAg:CreateAnimation("Alpha")
-            fadeOut:SetFromAlpha(1)
-            fadeOut:SetToAlpha(0)
-            fadeOut:SetDuration(0.4)
-            fadeOutAg:SetScript("OnFinished", function()
-                CloseToast()
-            end)
-            fadeOutAg:Play()
+    -- Click anywhere on toast to dismiss
+    popup:SetScript("OnMouseDown", function(self)
+        -- Prevent multiple clicks
+        if self.isClosing then
+            return
         end
+        self.isClosing = true
+        
+        -- Cancel auto-dismiss timer
+        if popup and popup.dismissTimer then
+            popup.dismissTimer:Cancel()
+            popup.dismissTimer = nil
+        end
+        
+        -- Cancel progress timer
+        if popup and popup.progressTimer then
+            popup.progressTimer:Cancel()
+            popup.progressTimer = nil
+        end
+        
+        -- Fade out quickly on click
+        local quickFadeAg = popup:CreateAnimationGroup()
+        local quickFade = quickFadeAg:CreateAnimation("Alpha")
+        quickFade:SetFromAlpha(popup:GetAlpha())
+        quickFade:SetToAlpha(0)
+        quickFade:SetDuration(0.25)
+        quickFadeAg:SetScript("OnFinished", function()
+            if popup and popup:IsShown() then
+                CloseToast()
+            end
+        end)
+        quickFadeAg:Play()
     end)
     
-    -- Slide-in animation (smooth and visible)
+    -- === ANIMATIONS ===
+    
+    -- Progress bar animation setup (will start after entrance)
+    local progressMaxWidth = popup:GetWidth() - 4
+    local function StartProgressBar()
+        local progressStartTime = GetTime()
+        local progressDuration = autoDismissDelay
+        
+        popup.progressTimer = C_Timer.NewTicker(0.05, function()
+            if not popup or not popup:IsShown() then
+                if popup.progressTimer then
+                    popup.progressTimer:Cancel()
+                    popup.progressTimer = nil
+                end
+                return
+            end
+            
+            local elapsed = GetTime() - progressStartTime
+            local remaining = math.max(0, progressDuration - elapsed)
+            local percent = remaining / progressDuration
+            local newWidth = progressMaxWidth * percent
+            progressBar:SetWidth(math.max(1, newWidth))
+            progressShine:SetWidth(math.max(1, newWidth))
+            
+            if remaining <= 0 then
+                if popup.progressTimer then
+                    popup.progressTimer:Cancel()
+                    popup.progressTimer = nil
+                end
+            end
+        end)
+    end
+    
+    -- Flash animation (full white, dramatic)
+    local flashAg = popup:CreateAnimationGroup()
+    
+    local flashIn = flashAg:CreateAnimation("Alpha")
+    flashIn:SetTarget(flashOverlay)
+    flashIn:SetFromAlpha(0)
+    flashIn:SetToAlpha(1.0) -- FULL white, no transparency
+    flashIn:SetDuration(0.08)
+    flashIn:SetStartDelay(0)
+    flashIn:SetSmoothing("NONE") -- Instant impact
+    
+    local flashOut = flashAg:CreateAnimation("Alpha")
+    flashOut:SetTarget(flashOverlay)
+    flashOut:SetFromAlpha(1.0)
+    flashOut:SetToAlpha(0)
+    flashOut:SetDuration(0.35)
+    flashOut:SetStartDelay(0.08)
+    flashOut:SetSmoothing("IN")
+    
+    -- Auto-dismiss after delay (entrance animation + display time)
+    local entranceDuration = 0.4 -- Total entrance animation time (simplified)
+    local totalDelay = entranceDuration + autoDismissDelay
+    
+    popup.dismissTimer = C_Timer.NewTimer(totalDelay, function()
+        -- Check if toast still exists and is shown
+        if not popup or not popup:IsShown() or popup.isClosing then
+            return
+        end
+        
+        popup.isClosing = true
+        
+        -- Fade out animation
+        local fadeOutAg = popup:CreateAnimationGroup()
+        local fadeOut = fadeOutAg:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(popup:GetAlpha())
+        fadeOut:SetToAlpha(0)
+        fadeOut:SetDuration(0.5)
+        fadeOut:SetSmoothing("IN")
+        
+        -- Slide up slightly
+        local slideUp = fadeOutAg:CreateAnimation("Translation")
+        slideUp:SetOffset(0, 30)
+        slideUp:SetDuration(0.5)
+        slideUp:SetSmoothing("IN")
+        
+        fadeOutAg:SetScript("OnFinished", function()
+            if popup and popup:IsShown() then
+                CloseToast()
+            end
+        end)
+        fadeOutAg:Play()
+    end)
+    
+    -- === ENTRANCE ANIMATION (smooth slide down with fade) ===
+    
     popup:SetAlpha(0)
-    local startYOffset = yOffset + 70 -- Start 70px above final position
+    local startYOffset = yOffset + 40 -- Start 40px above final position
     popup:ClearAllPoints()
     popup:SetPoint("TOP", UIParent, "TOP", 0, startYOffset)
     
-    local ag = popup:CreateAnimationGroup()
+    local enterAg = popup:CreateAnimationGroup()
     
-    -- Fade in
-    local fadeIn = ag:CreateAnimation("Alpha")
+    -- Fade in smoothly
+    local fadeIn = enterAg:CreateAnimation("Alpha")
     fadeIn:SetFromAlpha(0)
     fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(0.5)
-    fadeIn:SetOrder(1)
+    fadeIn:SetDuration(0.3)
+    fadeIn:SetSmoothing("OUT")
     
-    -- Slide down
-    local slideDown = ag:CreateAnimation("Translation")
-    slideDown:SetOffset(0, -70) -- Slide down 70px
-    slideDown:SetDuration(0.6)
-    slideDown:SetOrder(1)
-    slideDown:SetSmoothing("OUT") -- Ease-out effect
+    -- Slide down smoothly to final position
+    local slideDown = enterAg:CreateAnimation("Translation")
+    slideDown:SetOffset(0, -40) -- Move down to final position
+    slideDown:SetDuration(0.4)
+    slideDown:SetSmoothing("OUT")
     
-    -- After animation, fix the position permanently
-    ag:SetScript("OnFinished", function()
+    -- After entrance, start looping animations
+    enterAg:SetScript("OnFinished", function()
+        if not popup or not popup:IsShown() then
+            if self then
+                self.isProcessingToast = false
+            end
+            return
+        end
         popup:ClearAllPoints()
         popup:SetPoint("TOP", UIParent, "TOP", 0, yOffset)
-        popup:SetAlpha(1)
+        popup:SetAlpha(1.0)
+        StartProgressBar() -- Start progress bar AFTER entrance animation completes
+        
+        -- Reset processing flag now that entrance is complete
+        if self then
+            self.isProcessingToast = false
+        end
     end)
     
-    ag:Play()
+    -- Start entrance animation and flash
+    enterAg:Play()
+    flashAg:Play()
     
-    -- Click anywhere to dismiss
-    popup:EnableMouse(true)
-    popup:SetScript("OnMouseDown", function()
-        CloseToast()
-    end)
-    
-    -- Play a sound (if configured)
-    if config.sound then
-        PlaySound(config.sound)
-    end
+    -- Show popup
+    popup:Show()
 end
 
 --[[============================================================================

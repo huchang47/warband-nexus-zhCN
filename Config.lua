@@ -558,6 +558,24 @@ local options = {
                 WarbandNexus:Print("Update notification will show on next login.")
             end,
         },
+        resetCompletedPlansButton = {
+            order = 77,
+            type = "execute",
+            name = "Reset Completed Plans",
+            desc = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!",
+            width = 1.5,
+            confirm = true,
+            confirmText = "Are you sure you want to remove ALL completed plans? This cannot be undone!",
+            func = function()
+                if WarbandNexus.ResetCompletedPlans then
+                    local count = WarbandNexus:ResetCompletedPlans()
+                    WarbandNexus:Print(string.format("Removed %d completed plan(s).", count))
+                    if WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end
+            end,
+        },
         spacer7 = {
             order = 79,
             type = "description",

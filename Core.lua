@@ -129,6 +129,11 @@ local defaults = {
             reputations = true,  -- Reputation tracking
         },
         
+        -- Weekly Planner settings
+        showWeeklyPlanner = true,      -- Show Weekly Planner section in Characters tab
+        weeklyPlannerDays = 3,         -- Only show chars logged in within X days
+        weeklyPlannerCollapsed = false, -- Collapse state of the planner section
+        
         -- Currency settings
         currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
         currencyShowZero = true,  -- Show currencies with 0 quantity
@@ -246,6 +251,12 @@ local defaults = {
         -- Favorite characters (always shown at top)
         -- Array of "CharacterName-RealmName" keys
         favoriteCharacters = {},
+        
+        -- ========== PLANS STORAGE ==========
+        -- User-selected goals for mounts, pets, toys, recipes
+        plans = {},  -- Array of plan objects
+        -- Plan structure: { id, type, itemID, mountID/petID/recipeID, name, icon, source, addedAt, notes }
+        plansNextID = 1,  -- Auto-increment ID for plans
         
         -- Window size persistence
         window = {

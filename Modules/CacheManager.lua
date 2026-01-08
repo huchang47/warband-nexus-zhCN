@@ -199,9 +199,9 @@ function WarbandNexus:GetCachedPvEData(characterKey)
     
     -- Cache miss - fetch from v2 global storage
     local pveData = self:GetPvEDataV2(characterKey)
-    if pveData then
-        SetCache("pve", characterKey, pveData)
-        return pveData
+        if pveData then
+            SetCache("pve", characterKey, pveData)
+            return pveData
     end
     
     return nil

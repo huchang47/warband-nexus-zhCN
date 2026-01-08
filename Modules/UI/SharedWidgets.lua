@@ -1755,6 +1755,122 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
 end
 
 --============================================================================
+-- SHARED UI CONSTANTS
+--============================================================================
+
+local UI_CONSTANTS = {
+    BUTTON_HEIGHT = 28,
+    BORDER_SIZE = 1,
+    BUTTON_BORDER_COLOR = function() return COLORS.accent end,
+    BUTTON_BG_COLOR = {0.1, 0.1, 0.1, 1},
+}
+
+ns.UI_CONSTANTS = UI_CONSTANTS
+
+--============================================================================
+-- SHARED BUTTON WIDGET
+--============================================================================
+
+--[[
+    Create a themed button with consistent styling
+    @param parent - Parent frame
+    @param text - Button text
+    @param width - Button width
+    @return button - Created button
+]]
+local function CreateThemedButton(parent, text, width)
+    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
+    btn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        edgeSize = UI_CONSTANTS.BORDER_SIZE,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    btn:SetBackdropColor(unpack(UI_CONSTANTS.BUTTON_BG_COLOR))
+    local borderColor = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+    btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
+    
+    local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    btnText:SetPoint("CENTER")
+    btnText:SetText(text)
+    btn.text = btnText
+    
+    -- Hover effect
+    btn:SetScript("OnEnter", function(self)
+        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+        self:SetBackdropBorderColor(color[1] * 1.2, color[2] * 1.2, color[3] * 1.2, 1)
+    end)
+    btn:SetScript("OnLeave", function(self)
+        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+        self:SetBackdropBorderColor(color[1], color[2], color[3], 1)
+    end)
+    
+    return btn
+end
+
+--============================================================================
+-- SHARED CHECKBOX WIDGET
+--============================================================================
+
+--[[
+    Create a themed checkbox with consistent styling
+    @param parent - Parent frame
+    @param initialState - Initial checked state (boolean)
+    @return checkbox - Created checkbox
+]]
+local function CreateThemedCheckbox(parent, initialState)
+    local checkbox = CreateFrame("CheckButton", nil, parent, "BackdropTemplate")
+    checkbox:SetSize(UI_CONSTANTS.BUTTON_HEIGHT, UI_CONSTANTS.BUTTON_HEIGHT)
+    checkbox:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false,
+        edgeSize = UI_CONSTANTS.BORDER_SIZE,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    checkbox:SetBackdropColor(unpack(UI_CONSTANTS.BUTTON_BG_COLOR))
+    local borderColor = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+    checkbox:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
+    
+    -- Green tick texture
+    local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
+    checkTexture:SetSize(20, 20)
+    checkTexture:SetPoint("CENTER")
+    checkTexture:SetTexture("Interface\\BUTTONS\\UI-CheckBox-Check")
+    checkTexture:SetVertexColor(0, 1, 0, 1) -- Green color
+    checkbox.checkTexture = checkTexture
+    
+    if initialState then
+        checkTexture:Show()
+        checkbox:SetChecked(true)
+    else
+        checkTexture:Hide()
+        checkbox:SetChecked(false)
+    end
+    
+    checkbox:SetScript("OnClick", function(self)
+        if self:GetChecked() then
+            self.checkTexture:Show()
+        else
+            self.checkTexture:Hide()
+        end
+    end)
+    
+    checkbox:SetScript("OnEnter", function(self)
+        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+        self:SetBackdropBorderColor(color[1] * 1.2, color[2] * 1.2, color[3] * 1.2, 1)
+    end)
+    checkbox:SetScript("OnLeave", function(self)
+        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
+        self:SetBackdropBorderColor(color[1], color[2], color[3], 1)
+    end)
+    
+    return checkbox
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
@@ -1783,3 +1899,10 @@ ns.UI_ReleaseStorageRow = ReleaseStorageRow
 ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
+
+-- Shared widget exports
+ns.UI_CreateThemedButton = CreateThemedButton
+ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
+
+-- Currency transfer popup export
+ns.UI_CreateCurrencyTransferPopup = CreateCurrencyTransferPopup

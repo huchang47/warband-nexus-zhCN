@@ -192,7 +192,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- Build character lookup table
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         charLookup[charKey] = char
     end
     
@@ -205,13 +205,13 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         -- Build base reputation data from global storage
         local baseReputation = {
             name = repData.name or metadata.name or ("Faction " .. tostring(factionID)),
-            description = metadata.description,
+                        description = metadata.description,
             iconTexture = repData.icon or metadata.iconTexture,
             isRenown = repData.isRenown or metadata.isRenown,
-            canToggleAtWar = metadata.canToggleAtWar,
-            parentHeaders = metadata.parentHeaders,
-            isHeader = metadata.isHeader,
-            isHeaderWithRep = metadata.isHeaderWithRep,
+                        canToggleAtWar = metadata.canToggleAtWar,
+                        parentHeaders = metadata.parentHeaders,
+                        isHeader = metadata.isHeader,
+                        isHeaderWithRep = metadata.isHeaderWithRep,
             isMajorFaction = repData.isMajorFaction,
         }
         
@@ -228,23 +228,23 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 isHeader = baseReputation.isHeader,
                 isHeaderWithRep = baseReputation.isHeaderWithRep,
                 isMajorFaction = baseReputation.isMajorFaction,
-                
-                standingID = progress.standingID,
+                        
+                        standingID = progress.standingID,
                 currentValue = progress.currentValue or 0,
                 maxValue = progress.maxValue or 0,
-                renownLevel = progress.renownLevel,
-                renownMaxLevel = progress.renownMaxLevel,
-                rankName = progress.rankName,
-                paragonValue = progress.paragonValue,
-                paragonThreshold = progress.paragonThreshold,
+                        renownLevel = progress.renownLevel,
+                        renownMaxLevel = progress.renownMaxLevel,
+                        rankName = progress.rankName,
+                        paragonValue = progress.paragonValue,
+                        paragonThreshold = progress.paragonThreshold,
                 paragonRewardPending = progress.hasParagonReward,
-                isWatched = progress.isWatched,
-                atWarWith = progress.atWarWith,
-                lastUpdated = progress.lastUpdated,
-            }
-            
-            -- Check search filter
-            if ReputationMatchesSearch(reputation, reputationSearchText) then
+                        isWatched = progress.isWatched,
+                        atWarWith = progress.atWarWith,
+                        lastUpdated = progress.lastUpdated,
+                    }
+                    
+                    -- Check search filter
+                    if ReputationMatchesSearch(reputation, reputationSearchText) then
                 -- Use first character as representative
                 local firstChar = characters[1]
                 local charKey = firstChar and ((firstChar.name or "Unknown") .. "-" .. (firstChar.realm or "Unknown")) or "Account"
@@ -306,8 +306,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                                 characterLevel = char.level,
                                 isAccountWide = false,
                                 allCharData = {{
-                                    charKey = charKey,
-                                    reputation = reputation,
+                                        charKey = charKey,
+                                        reputation = reputation,
                                 }}
                             }
                         else
@@ -379,20 +379,20 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     
     for _, headerData in ipairs(globalHeaders) do
         if headerData and headerData.name then
-            if not seenHeaders[headerData.name] then
-                seenHeaders[headerData.name] = true
-                table.insert(headerOrder, headerData.name)
-                headerFactionLists[headerData.name] = {}  -- Array, not set
-            end
-            
-            -- Add factions in ORDER, avoiding duplicates
-            local existingFactions = {}
-            for _, fid in ipairs(headerFactionLists[headerData.name]) do
+                if not seenHeaders[headerData.name] then
+                    seenHeaders[headerData.name] = true
+                    table.insert(headerOrder, headerData.name)
+                    headerFactionLists[headerData.name] = {}  -- Array, not set
+                end
+                
+                -- Add factions in ORDER, avoiding duplicates
+                local existingFactions = {}
+                for _, fid in ipairs(headerFactionLists[headerData.name]) do
                 -- Convert to number for consistent comparison
                 local numFid = tonumber(fid) or fid
                 existingFactions[numFid] = true
-            end
-            
+                end
+                
             for _, factionID in ipairs(headerData.factions or {}) do
                 -- Convert to number for consistent comparison
                 local numFactionID = tonumber(factionID) or factionID
@@ -1155,10 +1155,10 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- Build per-character reputation data from global storage
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-        local isOnline = (charKey == currentCharKey)
-        
-        local matchingReputations = {}
+            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+            local isOnline = (charKey == currentCharKey)
+            
+            local matchingReputations = {}
         
         for factionID, repData in pairs(globalReputations) do
             factionID = tonumber(factionID) or factionID
@@ -1175,49 +1175,49 @@ function WarbandNexus:DrawReputationTab(parent)
             
             if progress then
                 -- Build reputation display object
-                local reputation = {
+                    local reputation = {
                     name = repData.name or metadata.name or ("Faction " .. tostring(factionID)),
-                    description = metadata.description,
+                        description = metadata.description,
                     iconTexture = repData.icon or metadata.iconTexture,
                     isRenown = repData.isRenown or metadata.isRenown,
-                    canToggleAtWar = metadata.canToggleAtWar,
+                        canToggleAtWar = metadata.canToggleAtWar,
                     parentHeaders = metadata.parentHeaders,
-                    isHeader = metadata.isHeader,
-                    isHeaderWithRep = metadata.isHeaderWithRep,
+                        isHeader = metadata.isHeader,
+                        isHeaderWithRep = metadata.isHeaderWithRep,
                     isMajorFaction = repData.isMajorFaction,
-                    
-                    standingID = progress.standingID,
+                        
+                        standingID = progress.standingID,
                     currentValue = progress.currentValue or 0,
                     maxValue = progress.maxValue or 0,
-                    renownLevel = progress.renownLevel,
-                    renownMaxLevel = progress.renownMaxLevel,
-                    rankName = progress.rankName,
-                    paragonValue = progress.paragonValue,
-                    paragonThreshold = progress.paragonThreshold,
+                        renownLevel = progress.renownLevel,
+                        renownMaxLevel = progress.renownMaxLevel,
+                        rankName = progress.rankName,
+                        paragonValue = progress.paragonValue,
+                        paragonThreshold = progress.paragonThreshold,
                     paragonRewardPending = progress.hasParagonReward,
-                    isWatched = progress.isWatched,
-                    atWarWith = progress.atWarWith,
-                    lastUpdated = progress.lastUpdated,
-                }
-                
-                if ReputationMatchesSearch(reputation, reputationSearchText) then
-                    table.insert(matchingReputations, {
-                        id = factionID,
-                        data = reputation,
-                    })
+                        isWatched = progress.isWatched,
+                        atWarWith = progress.atWarWith,
+                        lastUpdated = progress.lastUpdated,
+                    }
+                    
+                    if ReputationMatchesSearch(reputation, reputationSearchText) then
+                        table.insert(matchingReputations, {
+                            id = factionID,
+                            data = reputation,
+                        })
+                    end
                 end
             end
-        end
-        
-        if #matchingReputations > 0 then
-            hasAnyData = true
-            table.insert(charactersWithReputations, {
-                char = char,
-                key = charKey,
-                reputations = matchingReputations,
-                isOnline = isOnline,
-                sortPriority = isOnline and 0 or 1,
-            })
+            
+            if #matchingReputations > 0 then
+                hasAnyData = true
+                table.insert(charactersWithReputations, {
+                    char = char,
+                    key = charKey,
+                    reputations = matchingReputations,
+                    isOnline = isOnline,
+                    sortPriority = isOnline and 0 or 1,
+                })
         end
     end
     

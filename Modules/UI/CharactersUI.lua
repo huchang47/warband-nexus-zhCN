@@ -62,7 +62,157 @@ function WarbandNexus:DrawCharacterList(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText(#characters .. " characters tracked")
     
+    -- Show "Planner" toggle button in title bar if planner is hidden
+    if self.db and self.db.profile and self.db.profile.showWeeklyPlanner == false then
+        local showPlannerBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+        showPlannerBtn:SetSize(90, 22)
+        showPlannerBtn:SetPoint("RIGHT", -15, 0)
+        showPlannerBtn:SetText("Show Planner")
+        showPlannerBtn:SetScript("OnClick", function()
+            self.db.profile.showWeeklyPlanner = true
+            if self.RefreshUI then self:RefreshUI() end
+        end)
+        showPlannerBtn:SetScript("OnEnter", function(btn)
+            GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+            GameTooltip:SetText("Weekly Planner")
+            GameTooltip:AddLine("Shows tasks for characters logged in within 3 days", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        showPlannerBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
+    
     yOffset = yOffset + 75 -- Reduced spacing
+    
+    -- ===== WEEKLY PLANNER SECTION =====
+    local plannerSuccess = pcall(function()
+        local showPlanner = self.db.profile.showWeeklyPlanner ~= false
+        local plannerCollapsed = self.db.profile.weeklyPlannerCollapsed or false
+        
+        if showPlanner and self.GenerateWeeklyAlerts then
+            local alerts = self:GenerateWeeklyAlerts() or {}
+            local alertCount = (alerts and type(alerts) == "table") and #alerts or 0
+            
+            -- Always show planner section (even if empty - shows "All caught up!")
+            local plannerHeight = plannerCollapsed and 44 or (alertCount > 0 and (44 + math.min(alertCount, 8) * 26 + 10) or 70)
+            local plannerCard = CreateCard(parent, plannerHeight)
+            if not plannerCard then return end
+            
+            plannerCard:SetPoint("TOPLEFT", 10, -yOffset)
+            plannerCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            plannerCard:SetBackdropColor(0.08, 0.12, 0.08, 1)  -- Slight green tint
+            plannerCard:SetBackdropBorderColor(0.3, 0.5, 0.3, 1)
+            
+            -- Header row with collapse button
+            local collapseBtn = CreateFrame("Button", nil, plannerCard)
+            collapseBtn:SetSize(24, 24)
+            collapseBtn:SetPoint("LEFT", 12, plannerCollapsed and 0 or (plannerHeight/2 - 20))
+            
+            local collapseIcon = collapseBtn:CreateTexture(nil, "ARTWORK")
+            collapseIcon:SetAllPoints()
+            collapseIcon:SetTexture(plannerCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+            
+            collapseBtn:SetScript("OnClick", function()
+                self.db.profile.weeklyPlannerCollapsed = not self.db.profile.weeklyPlannerCollapsed
+                    if self.RefreshUI then self:RefreshUI() end
+                end)
+                
+                collapseBtn:SetScript("OnEnter", function(btn)
+                    collapseIcon:SetTexture(plannerCollapsed and "Interface\\Buttons\\UI-PlusButton-Hilight" or "Interface\\Buttons\\UI-MinusButton-Hilight")
+                end)
+                collapseBtn:SetScript("OnLeave", function(btn)
+                    collapseIcon:SetTexture(plannerCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+                end)
+                
+                local plannerIcon = plannerCard:CreateTexture(nil, "ARTWORK")
+                plannerIcon:SetSize(24, 24)
+                plannerIcon:SetPoint("LEFT", collapseBtn, "RIGHT", 8, 0)
+                plannerIcon:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+                
+            local plannerTitle = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            plannerTitle:SetPoint("LEFT", plannerIcon, "RIGHT", 8, 0)
+            if alertCount > 0 then
+                plannerTitle:SetText("|cff88cc88This Week|r  |cff666666(" .. alertCount .. " task" .. (alertCount > 1 and "s" or "") .. ")|r")
+            else
+                plannerTitle:SetText("|cff88cc88This Week|r  |cff44aa44All caught up!|r")
+            end
+            
+            -- Hide button on the right
+            local hideBtn = CreateFrame("Button", nil, plannerCard, "UIPanelButtonTemplate")
+            hideBtn:SetSize(70, 22)
+            hideBtn:SetPoint("RIGHT", -12, plannerCollapsed and 0 or (plannerHeight/2 - 20))
+            hideBtn:SetText("Hide")
+            hideBtn:SetScript("OnClick", function()
+                self.db.profile.showWeeklyPlanner = false
+                if self.RefreshUI then self:RefreshUI() end
+            end)
+            
+            -- Draw alerts if not collapsed
+            if not plannerCollapsed then
+                if alertCount > 0 then
+                    local alertY = -44
+                    local maxAlerts = 8  -- Limit visible alerts
+                    
+                    for i, alert in ipairs(alerts) do
+                        if i > maxAlerts then break end
+                        
+                        local alertRow = CreateFrame("Frame", nil, plannerCard)
+                        alertRow:SetSize(plannerCard:GetWidth() - 24, 24)
+                        alertRow:SetPoint("TOPLEFT", 12, alertY)
+                        
+                        -- Alert icon
+                        local aIcon = alertRow:CreateTexture(nil, "ARTWORK")
+                        aIcon:SetSize(20, 20)
+                        aIcon:SetPoint("LEFT", 0, 0)
+                        aIcon:SetTexture(alert.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        
+                        -- Priority indicator (color bullet)
+                        local priorityColors = {
+                            [1] = {1, 0.3, 0.3},    -- High priority (vault) - red
+                            [2] = {1, 0.6, 0},      -- Medium (knowledge) - orange
+                            [3] = {0.3, 0.7, 1},    -- Low (reputation) - blue
+                        }
+                        local pColor = priorityColors[alert.priority] or {0.7, 0.7, 0.7}
+                        
+                        local bullet = alertRow:CreateTexture(nil, "ARTWORK")
+                        bullet:SetSize(8, 8)
+                        bullet:SetPoint("LEFT", aIcon, "RIGHT", 6, 0)
+                        bullet:SetTexture("Interface\\COMMON\\Indicator-Green")  -- Circle texture
+                        bullet:SetVertexColor(pColor[1], pColor[2], pColor[3], 1)
+                        
+                        -- Character name + message
+                        local alertText = alertRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        alertText:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
+                        alertText:SetText((alert.character or "") .. ": " .. (alert.message or ""))
+                        alertText:SetJustifyH("LEFT")
+                        
+                        alertY = alertY - 26
+                    end
+                    
+                    -- Show "and X more..." if truncated
+                    if alertCount > maxAlerts then
+                        local moreText = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        moreText:SetPoint("BOTTOMLEFT", 48, 8)
+                        moreText:SetText("|cff666666...and " .. (alertCount - maxAlerts) .. " more|r")
+                    end
+                else
+                    -- Empty state - all caught up!
+                    local emptyIcon = plannerCard:CreateTexture(nil, "ARTWORK")
+                    emptyIcon:SetSize(24, 24)
+                    emptyIcon:SetPoint("LEFT", 48, -10)
+                    emptyIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    
+                    local emptyText = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    emptyText:SetPoint("LEFT", emptyIcon, "RIGHT", 8, 0)
+                    emptyText:SetText("|cff888888No pending tasks for recently active characters.|r")
+                end
+            end
+            
+            yOffset = yOffset + plannerHeight + 8
+        end
+    end)
+    -- If planner fails, just continue with the rest of the UI
     
     -- ===== TOTAL GOLD DISPLAY =====
     local totalGold = 0
@@ -567,23 +717,68 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(prof.name, 1, 1, 1)
                 
+                -- Show recipe count if available
+                if prof.recipes and prof.recipes.known and prof.recipes.total then
+                    local recipeColor = (prof.recipes.known == prof.recipes.total) and {0, 1, 0} or {0.8, 0.8, 0.8}
+                    GameTooltip:AddDoubleLine("Recipes", prof.recipes.known .. "/" .. prof.recipes.total, 
+                        0.7, 0.7, 0.7, recipeColor[1], recipeColor[2], recipeColor[3])
+                end
+                
                 if prof.expansions and #prof.expansions > 0 then
                     GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Expansion Progress:", 1, 0.82, 0)
+                    
                     -- Sort expansions: Newest (highest ID/skillLine) first
-                    -- Creating a copy to sort if not already sorted properly
                     local expansions = {}
                     for _, exp in ipairs(prof.expansions) do table.insert(expansions, exp) end
                     table.sort(expansions, function(a, b) return (a.skillLine or 0) > (b.skillLine or 0) end)
 
                     for _, exp in ipairs(expansions) do
                         local color = (exp.rank == exp.maxRank) and {0, 1, 0} or {0.8, 0.8, 0.8}
-                        -- Show all expansions found
-                        GameTooltip:AddDoubleLine(exp.name, exp.rank .. "/" .. exp.maxRank, 1, 0.82, 0, color[1], color[2], color[3])
+                        -- Show expansion skill level
+                        GameTooltip:AddDoubleLine("  " .. (exp.name or "Unknown"), exp.rank .. "/" .. exp.maxRank, 
+                            0.9, 0.9, 0.9, color[1], color[2], color[3])
+                        
+                        -- Show knowledge points if available (Dragonflight+)
+                        if exp.knowledgePoints then
+                            local kp = exp.knowledgePoints
+                            local unspent = kp.unspent or 0
+                            if unspent > 0 then
+                                -- Highlight unspent knowledge in orange
+                                GameTooltip:AddDoubleLine("    Knowledge", unspent .. " unspent!", 
+                                    0.5, 0.5, 0.5, 1, 0.6, 0)
+                            elseif kp.current and kp.current > 0 then
+                                GameTooltip:AddDoubleLine("    Knowledge", kp.current .. " spent", 
+                                    0.5, 0.5, 0.5, 0.6, 0.6, 0.6)
+                            end
+                        end
+                        
+                        -- Show specialization status if available
+                        if exp.hasSpecialization and exp.specializations then
+                            local unlockedCount = 0
+                            for _, spec in ipairs(exp.specializations) do
+                                if spec.state == "Unlocked" or spec.state == 1 then
+                                    unlockedCount = unlockedCount + 1
+                                end
+                            end
+                            if #exp.specializations > 0 then
+                                local specColor = (unlockedCount == #exp.specializations) and {0, 1, 0} or {0.6, 0.6, 0.6}
+                                GameTooltip:AddDoubleLine("    Specializations", unlockedCount .. "/" .. #exp.specializations,
+                                    0.5, 0.5, 0.5, specColor[1], specColor[2], specColor[3])
+                            end
+                        end
                     end
                 else
                     GameTooltip:AddLine(" ")
                     GameTooltip:AddDoubleLine("Skill", (prof.rank or 0) .. "/" .. (prof.maxRank or 0), 1, 1, 1, 1, 1, 1)
                     GameTooltip:AddLine("|cff888888Open Profession window to scan details|r", 0.5, 0.5, 0.5)
+                end
+                
+                -- Show last scan time if available
+                if prof.lastDetailedScan then
+                    local scanTime = date("%b %d, %H:%M", prof.lastDetailedScan)
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Last scanned: " .. scanTime, 0.5, 0.5, 0.5)
                 end
                 
                 GameTooltip:Show()

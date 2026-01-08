@@ -48,6 +48,7 @@ Modules\TooltipEnhancer.lua
 Modules\Scanner.lua
 Modules\Banker.lua
 Modules\PvE.lua
+Modules\PlansManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
@@ -58,6 +59,7 @@ Modules\UI\StorageUI.lua
 Modules\UI\PvEUI.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
+Modules\UI\PlansUI.lua
 Modules\UI\InformationDialog.lua
 Modules\UI.lua
 
