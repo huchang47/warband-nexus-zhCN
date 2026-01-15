@@ -553,8 +553,18 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             local majorData = C_MajorFactions.GetMajorFactionData(factionID)
             if majorData and self.ShowToastNotification then
                 local COLORS = ns.UI_COLORS or {accent = {0.2, 0.8, 1}}
+                
+                -- Try to get faction icon, fallback to renown icon
+                local factionIcon = "Interface\\Icons\\Achievement_Reputation_08"
+                if majorData.textureKit then
+                    -- Try major faction icon
+                    factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit)
+                elseif majorData.uiTextureKit then
+                    factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.uiTextureKit)
+                end
+                
                 self:ShowToastNotification({
-                    icon = majorData.textureKit and string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit) or "Interface\\Icons\\Achievement_Reputation_08",
+                    icon = factionIcon,
                     title = "Renown Increased!",
                     message = string.format("%s is now Renown %d", majorData.name or "Faction", newRenownLevel),
                     color = COLORS.accent,

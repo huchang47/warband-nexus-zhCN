@@ -21,6 +21,7 @@ local CATEGORIES = {
     { key = "mount", name = "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pet", name = "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toy", name = "Toys", icon = "Interface\\Icons\\INV_Misc_Toy_07" },
+    { key = "transmog", name = "Transmog", icon = "Interface\\Icons\\INV_Chest_Cloth_17" },
     { key = "illusion", name = "Illusions", icon = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
     { key = "title", name = "Titles", icon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2" },
     { key = "achievement", name = "Achievements", icon = "Interface\\Icons\\Achievement_General" },
@@ -29,7 +30,6 @@ local CATEGORIES = {
 -- Module state
 local currentCategory = "active"
 local searchText = ""
-local browseResults = {}
 local showCompleted = false  -- Default: show only active plans (not completed)
 
 -- Icons (no unicode - use game textures)
@@ -667,6 +667,29 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         results = self:GetUncollectedPets(searchText, 50)
     elseif category == "toy" then
         results = self:GetUncollectedToys(searchText, 50)
+    elseif category == "transmog" then
+        -- Work in Progress placeholder
+        local wipCard = CreateCard(parent, 120)
+        wipCard:SetPoint("TOPLEFT", 10, -yOffset)
+        wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        local wipIcon = wipCard:CreateTexture(nil, "ARTWORK")
+        wipIcon:SetSize(48, 48)
+        wipIcon:SetPoint("TOP", 0, -20)
+        wipIcon:SetTexture("Interface\\Icons\\INV_Chest_Cloth_17")
+        wipIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        
+        local wipText = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        wipText:SetPoint("TOP", wipIcon, "BOTTOM", 0, -12)
+        wipText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        wipText:SetText("Work in Progress")
+        
+        local wipDesc = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        wipDesc:SetPoint("TOP", wipText, "BOTTOM", 0, -8)
+        wipDesc:SetTextColor(0.6, 0.6, 0.6)
+        wipDesc:SetText("Transmog tracking feature is coming soon!")
+        
+        return yOffset + 140
     elseif category == "illusion" then
         results = self:GetUncollectedIllusions(searchText, 50)
     elseif category == "title" then

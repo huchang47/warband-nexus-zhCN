@@ -2123,6 +2123,15 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end
     end)
     
+    -- Initialize plan tracking for completion notifications (only on initial login)
+    if isInitialLogin then
+        C_Timer.After(4, function()
+            if WarbandNexus and WarbandNexus.InitializePlanTracking then
+                WarbandNexus:InitializePlanTracking()
+            end
+        end)
+    end
+    
     -- Single save attempt after 2 seconds (enough for character data to load)
     C_Timer.After(2, function()
         if WarbandNexus then

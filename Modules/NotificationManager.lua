@@ -244,24 +244,43 @@ function WarbandNexus:ShowToastNotification(config)
     
     -- Default values
     config = config or {}
-    local iconTexture = config.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local planType = config.planType or "custom" -- mount, pet, toy, achievement, title, illusion, recipe, reputation, custom
+    
+    -- Type-specific colors and default icons
+    local typeColors = {
+        mount = {1.0, 0.8, 0.2},        -- Gold
+        pet = {0.3, 1.0, 0.4},          -- Green
+        toy = {1.0, 0.9, 0.2},          -- Yellow
+        achievement = {1.0, 0.5, 0.0},  -- Orange
+        title = {0.8, 0.6, 1.0},        -- Light Purple
+        illusion = {0.4, 0.8, 1.0},     -- Light Blue
+        recipe = {0.8, 0.8, 0.5},       -- Tan
+        reputation = {0.0, 0.8, 1.0},   -- Cyan
+        plan = {1.0, 0.7, 0.3},         -- Orange-Gold for plan completed
+        custom = {0.6, 0.4, 0.9},       -- Purple
+    }
+    
+    local typeIcons = {
+        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+        toy = "Interface\\Icons\\INV_Misc_Toy_07",
+        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        title = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2",
+        illusion = "Interface\\Icons\\Spell_Holy_GreaterHeal",
+        recipe = "Interface\\Icons\\INV_Misc_Note_01",
+        reputation = "Interface\\Icons\\Achievement_Reputation_01",
+        plan = "Interface\\Icons\\INV_Scroll_03",  -- Parşömen scroll for plans
+        custom = "Interface\\Icons\\INV_Misc_QuestionMark",
+    }
+    
+    local iconTexture = config.icon or typeIcons[planType] or typeIcons.custom
     local titleText = config.title or "Notification"
     local messageText = config.message or ""
     local categoryText = config.category or nil
     local subtitleText = config.subtitle or ""
-    local planType = config.planType or "custom" -- mount, pet, toy, custom
-    local autoDismissDelay = config.autoDismiss or 8 -- Default 8 seconds (was too fast at 10 with old timing)
+    local autoDismissDelay = config.autoDismiss or 8 -- Default 8 seconds
     local onCloseCallback = config.onClose
     local playSound = config.playSound ~= false -- Default true
-    
-    -- Type-specific colors (gold for mount, green for pet, yellow for toy, purple for custom)
-    local typeColors = {
-        mount = {1.0, 0.8, 0.2},     -- Gold
-        pet = {0.3, 1.0, 0.4},       -- Green
-        toy = {1.0, 0.9, 0.2},       -- Yellow
-        custom = {0.6, 0.4, 0.9},    -- Purple
-        recipe = {0.8, 0.8, 0.5},    -- Tan
-    }
     local titleColor = config.titleColor or typeColors[planType] or typeColors.custom
     
     -- Calculate vertical position (stack toasts: 1st=-100, 2nd=-220, 3rd=-340)
@@ -812,27 +831,56 @@ function WarbandNexus:ShowLootNotification(itemID, itemLink, itemName, collectio
         return
     end
     
-    -- Get item icon (use override if provided)
+    -- Get item icon (use override if provided, or fetch from API, or use default)
     local icon = iconOverride
     
     if not icon then
+        -- Try to get icon from game APIs
+        local apiIcon
         if collectionType == "Mount" then
-            icon = select(3, C_MountJournal.GetMountInfoByID(itemID)) or "Interface\\Icons\\Ability_Mount_RidingHorse"
+            apiIcon = select(3, C_MountJournal.GetMountInfoByID(itemID))
         elseif collectionType == "Pet" then
-            icon = select(2, C_PetJournal.GetPetInfoBySpeciesID(itemID)) or "Interface\\Icons\\INV_Pet_BabyBlizzardBear"
+            apiIcon = select(2, C_PetJournal.GetPetInfoBySpeciesID(itemID))
         else
-            icon = select(10, GetItemInfo(itemID)) or "Interface\\Icons\\INV_Misc_Toy_01"
+            apiIcon = select(10, GetItemInfo(itemID))
+        end
+        
+        -- Use API icon or fallback to default
+        if apiIcon then
+            icon = apiIcon
+        else
+            -- Use default icons from typeIcons table
+            local typeMap = {
+                Mount = "mount",
+                Pet = "pet",
+                Toy = "toy",
+            }
+            local planType = typeMap[collectionType]
+            local typeIcons = {
+                mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+                pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+                toy = "Interface\\Icons\\INV_Misc_Toy_07",
+            }
+            icon = typeIcons[planType] or "Interface\\Icons\\INV_Misc_QuestionMark"
         end
     end
+    
+    -- Map collection type to planType for consistent styling
+    local planTypeMap = {
+        Mount = "mount",
+        Pet = "pet",
+        Toy = "toy",
+    }
+    local planType = planTypeMap[collectionType] or "custom"
     
     -- Use the generic toast notification system
     self:ShowToastNotification({
         icon = icon,
         title = itemName,
         message = "New " .. collectionType .. " collected!",
-        titleColor = {1.0, 0.82, 0}, -- Gold color for collectibles
+        planType = planType,
         autoDismiss = 8,
-        sound = 12889, -- SOUNDKIT.UI_LEGENDARY_LOOT_TOAST
+        playSound = true,
     })
 end
 
@@ -865,6 +913,23 @@ end
 function WarbandNexus:TestLootNotification(type)
     type = type and strlower(type) or "all"
     
+    -- Show help message
+    if type == "help" or type == "?" then
+        self:Print("|cff00ccff=== Notification Test Commands ===|r")
+        self:Print("|cffffcc00/wn testloot|r - Show all notification types")
+        self:Print("|cffffcc00/wn testloot mount|r - Test mount notification")
+        self:Print("|cffffcc00/wn testloot pet|r - Test pet notification")
+        self:Print("|cffffcc00/wn testloot toy|r - Test toy notification")
+        self:Print("|cffffcc00/wn testloot achievement|r - Test achievement notification")
+        self:Print("|cffffcc00/wn testloot plan|r - Test plan completed notification")
+        self:Print("|cffffcc00/wn testloot title|r - Test title notification")
+        self:Print("|cffffcc00/wn testloot illusion|r - Test illusion notification")
+        self:Print("|cffffcc00/wn testloot recipe|r - Test recipe notification")
+        self:Print("|cffffcc00/wn testloot reputation|r - Test reputation notification")
+        self:Print("|cffffcc00/wn testloot spam|r - Test queue system (5 toasts)")
+        return
+    end
+    
     -- Special test: "spam" shows 5 toasts to test queue system
     if type == "spam" then
         for i = 1, 5 do
@@ -886,56 +951,189 @@ function WarbandNexus:TestLootNotification(type)
         return
     end
     
+    local delay = 0
+    
     -- Show mount test
     if type == "mount" or type == "all" then
-        self:ShowLootNotification(
-            1234,
-            "|cff0070dd[Test Mount]|r",
-            "Test Mount",
-            "Mount",
-            "Interface\\Icons\\Ability_Mount_Invincible"
-        )
+        C_Timer.After(delay, function()
+            self:ShowLootNotification(
+                1234,
+                "|cff0070dd[Invincible's Reins]|r",
+                "Invincible's Reins",
+                "Mount",
+                "Interface\\Icons\\Ability_Mount_Invincible"
+            )
+        end)
         if type == "mount" then
             self:Print("|cff00ff00Test mount notification shown!|r")
             return
         end
+        delay = delay + 0.5
     end
     
     -- Show pet test
     if type == "pet" or type == "all" then
-        C_Timer.After(type == "all" and 0.5 or 0, function()
+        C_Timer.After(delay, function()
             self:ShowLootNotification(
                 5678,
-                "|cff0070dd[Test Pet]|r",
-                "Test Pet",
+                "|cff0070dd[Lil' Ragnaros]|r",
+                "Lil' Ragnaros",
                 "Pet",
                 "Interface\\Icons\\INV_Pet_BabyBlizzardBear"
             )
-            if type == "pet" then
-                self:Print("|cff00ff00Test pet notification shown!|r")
-            end
         end)
-        if type == "pet" then return end
+        if type == "pet" then
+            self:Print("|cff00ff00Test pet notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
     end
     
     -- Show toy test
     if type == "toy" or type == "all" then
-        C_Timer.After(type == "all" and 1.0 or 0, function()
+        C_Timer.After(delay, function()
             self:ShowLootNotification(
                 9012,
-                "|cff0070dd[Test Toy]|r",
-                "Test Toy",
+                "|cff0070dd[Toy Train Set]|r",
+                "Toy Train Set",
                 "Toy",
                 "Interface\\Icons\\INV_Misc_Toy_01"
             )
-            if type == "toy" then
-                self:Print("|cff00ff00Test toy notification shown!|r")
-            end
         end)
+        if type == "toy" then
+            self:Print("|cff00ff00Test toy notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show achievement test (using toast notification)
+    if type == "achievement" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Achievement Earned!",
+                message = "The Loremaster",
+                subtitle = "Complete all zone storylines",
+                icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
+                planType = "achievement",
+                category = "ACHIEVEMENT",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "achievement" then
+            self:Print("|cff00ff00Test achievement notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show plan completed test
+    if type == "plan" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Plan Completed!",
+                message = "Swift Spectral Tiger",
+                subtitle = "Mount collected",
+                planType = "plan",
+                category = "PLAN_COMPLETED",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "plan" then
+            self:Print("|cff00ff00Test plan notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show title test
+    if type == "title" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Title Earned!",
+                message = "the Immortal",
+                subtitle = "Complete Naxxramas without deaths",
+                icon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2",
+                planType = "title",
+                category = "TITLE",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "title" then
+            self:Print("|cff00ff00Test title notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show illusion test
+    if type == "illusion" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Illusion Collected!",
+                message = "Illusion: Flametongue",
+                subtitle = "Weapon illusion unlocked",
+                icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
+                planType = "illusion",
+                category = "ILLUSION",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "illusion" then
+            self:Print("|cff00ff00Test illusion notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show recipe test
+    if type == "recipe" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Recipe Learned!",
+                message = "Flask of Supreme Power",
+                subtitle = "Alchemy recipe",
+                planType = "recipe",
+                category = "RECIPE",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "recipe" then
+            self:Print("|cff00ff00Test recipe notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show reputation test
+    if type == "reputation" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowToastNotification({
+                title = "Reputation Increased!",
+                message = "Honored with Argent Crusade",
+                subtitle = "Reputation milestone reached",
+                planType = "reputation",
+                category = "REPUTATION",
+                playSound = true,
+                autoDismiss = 10,
+            })
+        end)
+        if type == "reputation" then
+            self:Print("|cff00ff00Test reputation notification shown!|r")
+            return
+        end
+        delay = delay + 0.5
     end
     
     if type == "all" then
-        self:Print("|cff00ff00Testing all 3 collectible types! (with stacking)|r")
+        self:Print("|cff00ff00Testing all notification types! Type |cffffcc00/wn testloot help|r for specific tests.|r")
+    else
+        self:Print("|cffff0000Unknown notification type. Use |cffffcc00/wn testloot help|r for available options.|r")
     end
 end
 

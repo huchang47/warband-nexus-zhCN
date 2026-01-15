@@ -26,6 +26,96 @@ local PLAN_TYPES = {
 ns.PLAN_TYPES = PLAN_TYPES
 
 -- ============================================================================
+-- PLAN TRACKING & NOTIFICATIONS
+-- ============================================================================
+
+--[[
+    Initialize plan completion tracking
+    Registers events to check for completed plans
+]]
+function WarbandNexus:InitializePlanTracking()
+    -- Register collection events
+    self:RegisterEvent("NEW_MOUNT_ADDED", "OnPlanCollectionUpdated")
+    self:RegisterEvent("NEW_PET_ADDED", "OnPlanCollectionUpdated")
+    self:RegisterEvent("NEW_TOY_ADDED", "OnPlanCollectionUpdated")
+    self:RegisterEvent("ACHIEVEMENT_EARNED", "OnPlanCollectionUpdated")
+    
+    -- Check all plans on login (after delay to ensure APIs are ready)
+    C_Timer.After(3, function()
+        self:CheckPlansForCompletion()
+    end)
+end
+
+--[[
+    Event handler for collection updates
+    Checks if any plans were completed
+]]
+function WarbandNexus:OnPlanCollectionUpdated(event, ...)
+    -- Debounce multiple events
+    if self.planCheckTimer then
+        self.planCheckTimer:Cancel()
+    end
+    
+    self.planCheckTimer = C_Timer.After(0.5, function()
+        self:CheckPlansForCompletion()
+    end)
+end
+
+--[[
+    Check all active plans for completion
+    Shows notifications for newly completed plans
+]]
+function WarbandNexus:CheckPlansForCompletion()
+    if not self.db or not self.db.global or not self.db.global.plans then
+        return
+    end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        -- Skip if already notified
+        if not plan.completionNotified then
+            local progress = self:CheckPlanProgress(plan)
+            
+            -- If plan is now collected, show notification
+            if progress and progress.collected then
+                self:ShowPlanCompletedNotification(plan)
+                plan.completionNotified = true
+            end
+        end
+    end
+end
+
+--[[
+    Show a toast notification for a completed plan
+    @param plan table - The completed plan
+]]
+function WarbandNexus:ShowPlanCompletedNotification(plan)
+    local planTypeNames = {
+        mount = "Mount",
+        pet = "Pet",
+        toy = "Toy",
+        achievement = "Achievement",
+        illusion = "Illusion",
+        title = "Title",
+        recipe = "Recipe",
+        custom = "Goal",
+    }
+    
+    local typeName = planTypeNames[plan.type] or "Item"
+    
+    self:ShowToastNotification({
+        title = "Plan Completed!",
+        message = plan.name,
+        subtitle = typeName .. " collected",
+        planType = "plan",
+        category = "PLAN_COMPLETED",
+        playSound = true,
+        autoDismiss = 10,
+    })
+    
+    self:Print("|cff00ff00Plan completed:|r " .. plan.name)
+end
+
+-- ============================================================================
 -- CRUD OPERATIONS
 -- ============================================================================
 
